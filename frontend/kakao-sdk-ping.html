@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>kakao sdk ping</title>
+    <script>
+      const t0 = performance.now()
+      function log(msg) {
+        console.log(msg, Math.round(performance.now() - t0) + 'ms')
+      }
+    </script>
+    <script
+      src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=9026e50f08b88ebc0621d1d6ef925b2b&autoload=false"
+      onload="log('sdk loaded'); kakao.maps.load(()=>log('maps.load done'))"
+      onerror="console.error('sdk error')"
+    ></script>
+  </head>
+  <body>
+    open console
+  </body>
+</html>
