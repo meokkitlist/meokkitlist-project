@@ -1,10 +1,10 @@
+// src/services/restaurant.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Restaurant } from '../entities/restaurant.entity';
 import { CreateRestaurantDto } from '../dto/create-restaurant.dto';
 import * as fs from 'fs';
-import * as path from 'path';
 import csv from 'csv-parser';
 
 @Injectable()
@@ -36,11 +36,12 @@ export class RestaurantService {
       throw new Error(`CSV file not found: ${filePath}`);
     }
 
-    const normalizeNumber = (v: any) => {
-      if (v === null || v === undefined || v === '') return NaN;
+    const normalizeNumber = (v: any): number | null => {
+      if (v === null || v === undefined || v === '') return null;
       const s = String(v).trim().replace(/['"]/g, '');
       const fixed = s.replace(',', '.');
-      return parseFloat(fixed);
+      const parsed = parseFloat(fixed);
+      return isNaN(parsed) ? null : parsed;
     };
 
     await new Promise<void>((resolve, reject) => {
@@ -48,10 +49,8 @@ export class RestaurantService {
         .pipe(csv())
         .on('data', (row) => {
           try {
-            // ✅ 업로드된 row 디버깅 로그
             this.logger.debug(`📌 CSV Row: ${JSON.stringify(row)}`);
 
-            // ✅ 다양한 헤더 이름 대응
             const name =
               row.name ||
               row.Name ||
@@ -82,9 +81,9 @@ export class RestaurantService {
             const preview =
               row.preview || row.Preview || row['미리보기'] || undefined;
 
-            if (!name || !address || isNaN(lat) || isNaN(lon)) {
+            if (!name || !address) {
               this.logger.warn(
-                `⚠️ Skip row (invalid): ${JSON.stringify(row)}`,
+                `⚠️ Skip row (필수값 누락): ${JSON.stringify(row)}`,
               );
               return;
             }
@@ -121,21 +120,11 @@ export class RestaurantService {
     await this.restaurantRepo.save(rows);
 
     // 업로드 임시 파일 삭제
-   try {
-  await new Promise<void>((resolve, reject) => {
-    fs.createReadStream(filePath)
-      .pipe(csv())
-      .on('data', (row) => {
-        this.logger.debug(`📌 CSV Row: ${JSON.stringify(row)}`);
-        // ... 기존 로직
-      })
-      .on('end', () => resolve())
-      .on('error', (err) => reject(err));
-  });
-} catch (e) {
-  throw new Error(`CSV 업로드 실패: ${e.message}`);
-}
-
+    try {
+      fs.unlinkSync(filePath);
+    } catch (e) {
+      this.logger.warn(`⚠️ 임시 파일 삭제 실패: ${e.message}`);
+    }
 
     return { inserted: rows.length };
   }

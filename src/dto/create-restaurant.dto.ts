@@ -1,11 +1,34 @@
+// src/dto/create-restaurant.dto.ts
+import { IsNumber, IsOptional, IsString } from 'class-validator';
+
 export class CreateRestaurantDto {
+  @IsString()
   name: string;
+
+  @IsString()
   address: string;
-  lat: number;
-  lon: number;
-  keywords?: string[]; // CSV에 없으면 기본 null
+
+  @IsOptional()
+  @IsNumber()
+  lat: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  lon: number | null;
+
+  @IsOptional()
+  @IsString()
+  preview?: string | null;
+
+  @IsOptional()
   review_count?: number;
+
+  @IsOptional()
   total_score?: number;
+
+  @IsOptional()
   naver_score?: number;
-  preview?: string;
+
+  @IsOptional()
+  keywords?: string[] | null;
 }
