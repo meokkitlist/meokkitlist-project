@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Restaurant } from '../entities/restaurant.entity';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Restaurant } from "../entities/restaurant.entity";
 
 @Injectable()
 export class KeywordMapService {
@@ -15,7 +15,7 @@ export class KeywordMapService {
 
   // ✅ 전체 Map 재생성
   async buildKeywordMap(): Promise<void> {
-    this.logger.log('🔁 키워드 → 가게 Map 재생성 시작');
+    this.logger.log("🔁 키워드 → 가게 Map 재생성 시작");
 
     const allRestaurants = await this.restaurantRepo.find();
     const newMap = new Map<string, number[]>();
@@ -37,7 +37,9 @@ export class KeywordMapService {
     }
 
     this.keywordToRestaurantMap = newMap;
-    this.logger.log(`✅ Map 빌드 완료: ${this.keywordToRestaurantMap.size}개 키워드`);
+    this.logger.log(
+      `✅ Map 빌드 완료: ${this.keywordToRestaurantMap.size}개 키워드`,
+    );
   }
 
   // ✅ 단일 키워드 → 관련 가게 id[]
@@ -58,14 +60,17 @@ export class KeywordMapService {
       return raw.map((k) => String(k).trim()).filter(Boolean);
     }
 
-    if (typeof raw === 'string') {
+    if (typeof raw === "string") {
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           return parsed.map((k) => String(k).trim()).filter(Boolean);
         }
       } catch {
-        return raw.split(',').map((k) => k.trim()).filter(Boolean);
+        return raw
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean);
       }
     }
 
