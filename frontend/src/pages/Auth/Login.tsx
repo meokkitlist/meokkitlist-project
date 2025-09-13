@@ -1,6 +1,7 @@
 import styled from '@emotion/styled'
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { Layout } from '@/components/Layout/Layout'
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:3001'
@@ -56,75 +57,60 @@ export default function Login() {
   }
 
   return (
-    <Wrapper>
-      <Card>
-        <Title>로그인</Title>
-        <Form onSubmit={handleSubmit} noValidate>
-          <Label htmlFor="email">이메일</Label>
-          <Input
-            id="email"
-            type="email"
-            placeholder="you@example.com"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
-            required
-          />
-
-          <Label htmlFor="password">비밀번호</Label>
-          <PwRow>
+    <Layout>
+      <Wrapper>
+        <Card>
+          <Title>로그인</Title>
+          <Form onSubmit={handleSubmit} noValidate>
+            <Label htmlFor="email">이메일</Label>
             <Input
-              id="password"
-              type={showPw ? 'text' : 'password'}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
               required
             />
-            <SmallBtn
-              type="button"
-              onClick={() => setShowPw((v) => !v)}
-              aria-label="비밀번호 표시 전환"
-            >
-              {showPw ? '숨기기' : '표시'}
-            </SmallBtn>
-          </PwRow>
 
-          {error && <ErrorMsg>{error}</ErrorMsg>}
+            <Label htmlFor="password">비밀번호</Label>
+            <PwRow>
+              <Input
+                id="password"
+                type={showPw ? 'text' : 'password'}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                required
+              />
+              <SmallBtn
+                type="button"
+                onClick={() => setShowPw((v) => !v)}
+                aria-label="비밀번호 표시 전환"
+              >
+                {showPw ? '숨기기' : '표시'}
+              </SmallBtn>
+            </PwRow>
 
-          <SubmitBtn type="submit" disabled={loading}>
-            {loading ? '로그인 중…' : '로그인'}
-          </SubmitBtn>
+            {error && <ErrorMsg>{error}</ErrorMsg>}
 
-          <Divider>또는</Divider>
+            <SubmitBtn type="submit" disabled={loading}>
+              {loading ? '로그인 중…' : '로그인'}
+            </SubmitBtn>
 
-          <SocialRow>
-            <SocialBtn
-              type="button"
-              onClick={() => (window.location.href = urlJoin('/auth/kakao'))}
-            >
-              카카오로 로그인
-            </SocialBtn>
-            <SocialBtn
-              type="button"
-              onClick={() => (window.location.href = urlJoin('/auth/google'))}
-            >
-              구글로 로그인
-            </SocialBtn>
-          </SocialRow>
-
-          <MutedRow>
-            아직 계정이 없나요?{' '}
-            <LinkBtn type="button" onClick={goSignup}>
-              회원가입
-            </LinkBtn>
-          </MutedRow>
-        </Form>
-      </Card>
-    </Wrapper>
+            <MutedRow>
+              아직 계정이 없나요?{' '}
+              <LinkBtn type="button" onClick={goSignup}>
+                회원가입
+              </LinkBtn>
+            </MutedRow>
+          </Form>
+        </Card>
+      </Wrapper>
+    </Layout>
   )
 }
 

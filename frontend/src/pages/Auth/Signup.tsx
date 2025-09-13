@@ -1,6 +1,7 @@
 import styled from '@emotion/styled'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Layout } from '@/components/Layout/Layout'
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:3001'
@@ -60,62 +61,64 @@ export default function Signup() {
   }
 
   return (
-    <Wrapper>
-      <Card>
-        <Title>회원가입</Title>
-        <Form onSubmit={handleSubmit} noValidate>
-          <Label htmlFor="email">이메일</Label>
-          <Input
-            id="email"
-            type="email"
-            placeholder="you@example.com"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
-            required
-          />
+    <Layout>
+      <Wrapper>
+        <Card>
+          <Title>회원가입</Title>
+          <Form onSubmit={handleSubmit} noValidate>
+            <Label htmlFor="email">이메일</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
+              required
+            />
 
-          <Label htmlFor="password">비밀번호</Label>
-          <Input
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-            required
-          />
+            <Label htmlFor="password">비밀번호</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              required
+            />
 
-          <Label htmlFor="password2">비밀번호 확인</Label>
-          <Input
-            id="password2"
-            type="password"
-            placeholder="••••••••"
-            autoComplete="new-password"
-            value={password2}
-            onChange={(e) => setPassword2(e.target.value)}
-            disabled={loading}
-            required
-          />
+            <Label htmlFor="password2">비밀번호 확인</Label>
+            <Input
+              id="password2"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              value={password2}
+              onChange={(e) => setPassword2(e.target.value)}
+              disabled={loading}
+              required
+            />
 
-          {error && <ErrorMsg>{error}</ErrorMsg>}
-          {success && <SuccessMsg>{success}</SuccessMsg>}
+            {error && <ErrorMsg>{error}</ErrorMsg>}
+            {success && <SuccessMsg>{success}</SuccessMsg>}
 
-          <SubmitBtn type="submit" disabled={loading}>
-            {loading ? '가입 중…' : '회원가입'}
-          </SubmitBtn>
+            <SubmitBtn type="submit" disabled={loading}>
+              {loading ? '가입 중…' : '회원가입'}
+            </SubmitBtn>
 
-          <MutedRow>
-            이미 계정이 있나요?{' '}
-            <LinkBtn type="button" onClick={() => navigate('/login')}>
-              로그인
-            </LinkBtn>
-          </MutedRow>
-        </Form>
-      </Card>
-    </Wrapper>
+            <MutedRow>
+              이미 계정이 있나요?{' '}
+              <LinkBtn type="button" onClick={() => navigate('/login')}>
+                로그인
+              </LinkBtn>
+            </MutedRow>
+          </Form>
+        </Card>
+      </Wrapper>
+    </Layout>
   )
 }
 

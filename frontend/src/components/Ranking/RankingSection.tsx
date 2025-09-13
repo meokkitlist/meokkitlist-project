@@ -92,6 +92,7 @@ function LazyRankRow({
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [btnHover, setBtnHover] = useState(false)
   const restaurantId = (item as any).restaurant_id ?? (item as any).id ?? null
 
   async function submitReview() {
@@ -141,10 +142,10 @@ function LazyRankRow({
       {inView ? (
         <RankItem
           delay={index * 90}
-          title={`${item.marketAddress} · 네이버 ${item.naverScore}점`}
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           data-open={open ? 'true' : 'false'}
+          data-hover-blocked={btnHover ? 'true' : 'false'}
         >
           <Row>
             <Left>
@@ -167,6 +168,8 @@ function LazyRankRow({
             </Left>
             <Right>
               <OpenBtn
+                onMouseEnter={() => setBtnHover(true)}
+                onMouseLeave={() => setBtnHover(false)}
                 onClick={(e) => {
                   e.stopPropagation()
                   if (!item.marketUrl) return
@@ -300,6 +303,9 @@ const RankItem = styled.li<{ delay: number }>`
     transform 0.05s ease;
   &:hover {
     background: #f2f5fa;
+  }
+  &[data-hover-blocked='true']:hover {
+    background: #f8f9fb;
   }
   &:active {
     transform: scale(0.998);
