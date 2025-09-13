@@ -36,7 +36,9 @@ async function bootstrap() {
             if (origins.includes(origin))
                 return callback(null, true);
             const ok = origins.some((o) => o instanceof RegExp && o.test(origin));
-            return ok ? callback(null, true) : callback(new Error(`CORS blocked: ${origin}`));
+            return ok
+                ? callback(null, true)
+                : callback(new Error(`CORS blocked: ${origin}`));
         },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -56,8 +58,8 @@ async function bootstrap() {
         .build();
     const swaggerDoc = swagger_1.SwaggerModule.createDocument(app, swaggerConfig);
     swagger_1.SwaggerModule.setup('api-docs', app, swaggerDoc);
-    const PORT = parseInt(process.env.APP_PORT ?? '3001', 10);
-    await app.listen(PORT);
+    const PORT = parseInt(process.env.PORT ?? process.env.APP_PORT ?? '3001', 10);
+    await app.listen(PORT, '0.0.0.0');
     logger.log(`🚀 Server is running on http://localhost:${PORT}`);
     logger.log(`📘 Swagger docs at http://localhost:${PORT}/api-docs`);
     logger.log(`🔐 CORS origins: ${Array.isArray(origins) ? origins.join(', ') : origins}`);

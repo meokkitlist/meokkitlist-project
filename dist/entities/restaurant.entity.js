@@ -39,12 +39,12 @@ __decorate([
     __metadata("design:type", String)
 ], Restaurant.prototype, "address", void 0);
 __decorate([
-    (0, typeorm_1.Column)('float'),
-    __metadata("design:type", Number)
+    (0, typeorm_1.Column)('float', { nullable: true }),
+    __metadata("design:type", Object)
 ], Restaurant.prototype, "lat", void 0);
 __decorate([
-    (0, typeorm_1.Column)('float'),
-    __metadata("design:type", Number)
+    (0, typeorm_1.Column)('float', { nullable: true }),
+    __metadata("design:type", Object)
 ], Restaurant.prototype, "lon", void 0);
 __decorate([
     (0, typeorm_1.Column)('simple-json', { nullable: true }),

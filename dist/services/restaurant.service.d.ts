@@ -1,6 +1,6 @@
-import { Repository } from 'typeorm';
-import { Restaurant } from '../entities/restaurant.entity';
-import { CreateRestaurantDto } from '../dto/create-restaurant.dto';
+import { Repository } from "typeorm";
+import { Restaurant } from "../entities/restaurant.entity";
+import { CreateRestaurantDto } from "../dto/create-restaurant.dto";
 export declare class RestaurantService {
     private readonly restaurantRepo;
     private readonly logger;

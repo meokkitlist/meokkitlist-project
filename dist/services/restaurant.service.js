@@ -74,91 +74,128 @@ let RestaurantService = RestaurantService_1 = class RestaurantService {
         return this.restaurantRepo.save(restaurant);
     }
     async uploadCsv(filePath) {
-        const rows = [];
         if (!fs.existsSync(filePath)) {
             throw new Error(`CSV file not found: ${filePath}`);
         }
-        const normalizeNumber = (v) => {
-            if (v === null || v === undefined || v === '')
+        const rows = [];
+        const normalizeNumber = (value) => {
+            if (value === null || value === undefined)
                 return NaN;
-            const s = String(v).trim().replace(/['"]/g, '');
-            const fixed = s.replace(',', '.');
-            return parseFloat(fixed);
+            let s = String(value).trim();
+            if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
+                s = s.replace(/,/g, "");
+            }
+            else if (/^\d+,\d+$/.test(s)) {
+                s = s.replace(",", ".");
+            }
+            s = s.replace(/[^0-9.\-+eE]/g, "");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        };
+        const normalizeHeader = (header) => {
+            const h = header
+                .replace(/\uFEFF/g, "")
+                .normalize("NFKC")
+                .trim()
+                .replace(/\s+/g, "")
+                .replace(/[(){}\[\]\-]/g, "")
+                .toLowerCase();
+            const aliasMap = {
+                name: "name",
+                이름: "name",
+                storename: "name",
+                address: "address",
+                주소: "address",
+                storeaddress: "address",
+                lat: "lat",
+                latitude: "lat",
+                위도: "lat",
+                lat위도: "lat",
+                lon: "lon",
+                lng: "lon",
+                longitude: "lon",
+                경도: "lon",
+                lon경도: "lon",
+                preview: "preview",
+                미리보기: "preview",
+            };
+            return aliasMap[h] ?? h;
         };
         await new Promise((resolve, reject) => {
-            fs.createReadStream(filePath)
-                .pipe((0, csv_parser_1.default)())
-                .on('data', (row) => {
+            fs.createReadStream(filePath, { encoding: "utf8" })
+                .pipe((0, csv_parser_1.default)({
+                bom: true,
+                mapHeaders: ({ header }) => normalizeHeader(header),
+                mapValues: ({ value }) => typeof value === "string" ? value.trim() : value,
+            }))
+                .on("data", (row) => {
                 try {
-                    this.logger.debug(`📌 CSV Row: ${JSON.stringify(row)}`);
-                    const name = row.name ||
-                        row.Name ||
-                        row['이름'] ||
-                        row['store_name'] ||
-                        '';
-                    const address = row.address ||
-                        row.Address ||
-                        row['주소'] ||
-                        row['store_address'] ||
-                        '';
-                    const lat = normalizeNumber(row.lat ||
-                        row.latitude ||
-                        row.Lat ||
-                        row['위도'] ||
-                        row['lat(위도)']);
-                    const lon = normalizeNumber(row.lon ||
-                        row.lng ||
-                        row.Lon ||
-                        row.longitude ||
-                        row['경도'] ||
-                        row['lon(경도)']);
-                    const preview = row.preview || row.Preview || row['미리보기'] || undefined;
-                    if (!name || !address || isNaN(lat) || isNaN(lon)) {
-                        this.logger.warn(`⚠️ Skip row (invalid): ${JSON.stringify(row)}`);
+                    this.logger.debug(`📌 CSV Row(raw): ${JSON.stringify(row)}`);
+                    const nameRaw = row["name"] ?? "";
+                    const addressRaw = row["address"] ?? "";
+                    const latRaw = row["lat"];
+                    const lonRaw = row["lon"];
+                    const previewRaw = row["preview"];
+                    const name = String(nameRaw || "").trim();
+                    const address = String(addressRaw || "").trim();
+                    const lat = normalizeNumber(latRaw);
+                    const lon = normalizeNumber(lonRaw);
+                    const preview = previewRaw !== undefined && previewRaw !== null
+                        ? String(previewRaw).trim()
+                        : undefined;
+                    this.logger.debug(`   - Parsed → name: "${name}", address: "${address}", lat: ${lat}, lon: ${lon}`);
+                    if (!name) {
+                        this.logger.warn(`⚠️ 이름 누락, 스킵: ${JSON.stringify(row)}`);
+                        return;
+                    }
+                    if (!address) {
+                        this.logger.warn(`⚠️ 주소 누락, 스킵: ${JSON.stringify(row)}`);
+                        return;
+                    }
+                    if (Number.isNaN(lat)) {
+                        this.logger.warn(`⚠️ 위도 누락/형식오류, 스킵: ${JSON.stringify(row)}`);
+                        return;
+                    }
+                    if (Number.isNaN(lon)) {
+                        this.logger.warn(`⚠️ 경도 누락/형식오류, 스킵: ${JSON.stringify(row)}`);
                         return;
                     }
                     rows.push({
-                        name: String(name).trim(),
-                        address: String(address).trim(),
+                        name,
+                        address,
                         lat,
                         lon,
-                        preview: preview ? String(preview).trim() : undefined,
+                        preview,
                         review_count: 0,
                         total_score: 0,
                         naver_score: 0,
                     });
                 }
                 catch (e) {
-                    this.logger.error(`❌ Row parse error: ${e}`);
+                    this.logger.error(`❌ Row parse error: ${e instanceof Error ? e.message : String(e)}`);
                 }
             })
-                .on('end', () => {
+                .once("end", () => {
                 this.logger.log(`✅ CSV 파싱 완료: ${rows.length}개 유효 row`);
                 resolve();
             })
-                .on('error', (err) => {
+                .once("error", (err) => {
                 this.logger.error(`❌ CSV Parse Error: ${err.message}`);
                 reject(err);
             });
         });
         if (rows.length === 0) {
-            this.logger.warn('⚠️ 유효한 row가 없어 저장하지 않음');
+            this.logger.warn("⚠️ 유효한 row가 없어 저장하지 않습니다.");
             return { inserted: 0 };
         }
-        await this.restaurantRepo.save(rows);
+        const entities = rows.map((dto) => this.restaurantRepo.create(dto));
+        await this.restaurantRepo.save(entities);
         try {
-            await new Promise((resolve, reject) => {
-                fs.createReadStream(filePath)
-                    .pipe((0, csv_parser_1.default)())
-                    .on('data', (row) => {
-                    this.logger.debug(`📌 CSV Row: ${JSON.stringify(row)}`);
-                })
-                    .on('end', () => resolve())
-                    .on('error', (err) => reject(err));
-            });
+            await fs.promises.unlink(filePath);
+            this.logger.log(`🗑️ 업로드 임시 파일 삭제: ${filePath}`);
         }
         catch (e) {
-            throw new Error(`CSV 업로드 실패: ${e.message}`);
+            this.logger.warn(`임시 파일 삭제 실패(무시 가능): ${e.message}`);
         }
         return { inserted: rows.length };
     }

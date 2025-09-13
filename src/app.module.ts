@@ -5,7 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisModule, RedisModuleOptions } from '@nestjs-modules/ioredis';
 import * as redisStore from 'cache-manager-ioredis';
-import { MulterModule } from '@nestjs/platform-express'; // ✅ 추가
+import { MulterModule } from '@nestjs/platform-express';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -36,7 +36,6 @@ import { Restaurant } from './entities/restaurant.entity';
 
 import { AuthModule } from './auth/auth.module';
 
-// ✅ 새로 추가된 import
 import { RestaurantController } from './controllers/restaurant.controller';
 import { RestaurantService } from './services/restaurant.service';
 
@@ -48,27 +47,44 @@ import { RestaurantService } from './services/restaurant.service';
     // 2) HTTP 모듈
     HttpModule,
 
-    // 3) DB 연결 (env 기반)
-    TypeOrmModule.forRoot({
-      type: (process.env.DB_TYPE as any) || 'sqlite',
-      database: process.env.DB_PATH || 'meokkitlist.sqlite',
-      entities: [Review, Restaurant],
-      synchronize:
-        process.env.NODE_ENV === 'development' ||
-        process.env.NODE_ENV === 'dev' ||
-        process.env.NODE_ENV === undefined
-          ? true
-          : false,
-      autoLoadEntities: true,
+    // 3) DB 연결 (환경 기반)
+    TypeOrmModule.forRootAsync({
+      useFactory: () => {
+        if (process.env.DATABASE_URL) {
+          // ✅ 배포환경: PostgreSQL
+          return {
+            type: 'postgres',
+            url: process.env.DATABASE_URL,
+            entities: [Review, Restaurant],
+            autoLoadEntities: true,
+            synchronize: true, // ⚠️ 데모 시 true, 운영은 migration 권장
+            ssl: { rejectUnauthorized: false },
+          };
+        } else {
+          // ✅ 로컬: SQLite
+          return {
+            type: (process.env.DB_TYPE as any) || 'sqlite',
+            database: process.env.DB_PATH || 'meokkitlist.sqlite',
+            entities: [Review, Restaurant],
+            synchronize:
+              process.env.NODE_ENV === 'development' ||
+              process.env.NODE_ENV === 'dev' ||
+              process.env.NODE_ENV === undefined
+                ? true
+                : false,
+            autoLoadEntities: true,
+          };
+        }
+      },
     }),
 
     // 4) 엔티티 레포지토리 등록
     TypeOrmModule.forFeature([Review, Restaurant]),
 
-    // ✅ 파일 업로드 사용 (선택이지만 명시적으로 넣어둠)
+    // 5) 파일 업로드 지원
     MulterModule.register({}),
 
-    // 5) 전역 캐시 (Redis backend)
+    // 6) 전역 캐시 (Redis backend)
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: async () => ({
@@ -80,7 +96,7 @@ import { RestaurantService } from './services/restaurant.service';
       }),
     }),
 
-    // 6) Redis 클라이언트 (pub/sub, direct 사용 시)
+    // 7) Redis 클라이언트
     RedisModule.forRootAsync({
       useFactory: async (): Promise<RedisModuleOptions> => ({
         type: 'single',
@@ -94,7 +110,7 @@ import { RestaurantService } from './services/restaurant.service';
       }),
     }),
 
-    // 7) 인증 모듈
+    // 8) 인증 모듈
     AuthModule,
   ],
 
@@ -107,7 +123,6 @@ import { RestaurantService } from './services/restaurant.service';
     GptController,
     KeywordController,
     RedisController,
-    // ✅ 추가
     RestaurantController,
   ],
 
@@ -120,7 +135,6 @@ import { RestaurantService } from './services/restaurant.service';
     GptService,
     KeywordExtractionService,
     KeywordMapService,
-    // ✅ 추가
     RestaurantService,
   ],
 

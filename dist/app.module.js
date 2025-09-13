@@ -77,16 +77,32 @@ exports.AppModule = AppModule = __decorate([
         imports: [
             config_1.ConfigModule.forRoot({ isGlobal: true }),
             axios_1.HttpModule,
-            typeorm_1.TypeOrmModule.forRoot({
-                type: process.env.DB_TYPE || 'sqlite',
-                database: process.env.DB_PATH || 'meokkitlist.sqlite',
-                entities: [review_entity_1.Review, restaurant_entity_1.Restaurant],
-                synchronize: process.env.NODE_ENV === 'development' ||
-                    process.env.NODE_ENV === 'dev' ||
-                    process.env.NODE_ENV === undefined
-                    ? true
-                    : false,
-                autoLoadEntities: true,
+            typeorm_1.TypeOrmModule.forRootAsync({
+                useFactory: () => {
+                    if (process.env.DATABASE_URL) {
+                        return {
+                            type: 'postgres',
+                            url: process.env.DATABASE_URL,
+                            entities: [review_entity_1.Review, restaurant_entity_1.Restaurant],
+                            autoLoadEntities: true,
+                            synchronize: true,
+                            ssl: { rejectUnauthorized: false },
+                        };
+                    }
+                    else {
+                        return {
+                            type: process.env.DB_TYPE || 'sqlite',
+                            database: process.env.DB_PATH || 'meokkitlist.sqlite',
+                            entities: [review_entity_1.Review, restaurant_entity_1.Restaurant],
+                            synchronize: process.env.NODE_ENV === 'development' ||
+                                process.env.NODE_ENV === 'dev' ||
+                                process.env.NODE_ENV === undefined
+                                ? true
+                                : false,
+                            autoLoadEntities: true,
+                        };
+                    }
+                },
             }),
             typeorm_1.TypeOrmModule.forFeature([review_entity_1.Review, restaurant_entity_1.Restaurant]),
             platform_express_1.MulterModule.register({}),

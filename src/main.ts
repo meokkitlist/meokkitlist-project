@@ -1,4 +1,3 @@
-// src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
@@ -8,7 +7,7 @@ import cookieParser from 'cookie-parser';
 function parseOrigins(): (string | RegExp)[] {
   const raw = process.env.CORS_ORIGIN?.trim();
   if (!raw) {
-    // ✅ 기본값: 프론트(3000) + Swagger(3001) 둘 다 허용
+    // 기본값: 프론트(3000) + Swagger(3001) 둘 다 허용
     return ['http://localhost:3000', 'http://localhost:3001'];
   }
   return raw.split(',').map((s) => s.trim());
@@ -31,32 +30,30 @@ async function bootstrap() {
   );
 
   // 3) CORS 설정
-const origins = parseOrigins();
-app.enableCors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // curl/Postman 허용
+  const origins = parseOrigins();
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // curl/Postman 허용
 
-    // ✅ Swagger UI (3001) 허용 강제 추가
-    if (
-      origin === 'http://localhost:3000' ||
-      origin === 'http://localhost:3001'
-    ) {
-      return callback(null, true);
-    }
+      if (
+        origin === 'http://localhost:3000' ||
+        origin === 'http://localhost:3001'
+      ) {
+        return callback(null, true);
+      }
 
-    // 나머지 .env 기반 origins도 체크
-    if (origins.includes(origin)) return callback(null, true);
+      if (origins.includes(origin)) return callback(null, true);
 
-    const ok = origins.some(
-      (o) => o instanceof RegExp && o.test(origin),
-    );
-    return ok ? callback(null, true) : callback(new Error(`CORS blocked: ${origin}`));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Set-Cookie'],
-});
+      const ok = origins.some((o) => o instanceof RegExp && o.test(origin));
+      return ok
+        ? callback(null, true)
+        : callback(new Error(`CORS blocked: ${origin}`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Set-Cookie'],
+  });
 
   // 4) Swagger 문서
   const swaggerConfig = new DocumentBuilder()
@@ -74,9 +71,9 @@ app.enableCors({
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api-docs', app, swaggerDoc);
 
-  // 5) 서버 시작
-  const PORT = parseInt(process.env.APP_PORT ?? '3001', 10);
-  await app.listen(PORT);
+  // 5) 서버 시작 (PORT 환경변수 우선)
+  const PORT = parseInt(process.env.PORT ?? process.env.APP_PORT ?? '3001', 10);
+  await app.listen(PORT, '0.0.0.0');
 
   logger.log(`🚀 Server is running on http://localhost:${PORT}`);
   logger.log(`📘 Swagger docs at http://localhost:${PORT}/api-docs`);

@@ -1,12 +1,16 @@
-import { ReviewService } from '../services/review.service';
-import { SentimentService } from '../services/sentiment.service';
-interface CreateReviewDto {
+import { ReviewService } from "../services/review.service";
+import { SentimentService } from "../services/sentiment.service";
+export declare enum ReviewSource {
+    USER = "user",
+    CRAWL = "crawl"
+}
+export declare class CreateReviewDto {
     text: string;
     restaurant_id: string;
     user_id?: string;
-    source: 'user' | 'crawl';
+    source: ReviewSource;
 }
-interface ExpandKeywordDto {
+export declare class ExpandKeywordDto {
     keyword: string;
 }
 export declare class ReviewController {
@@ -20,6 +24,10 @@ export declare class ReviewController {
     expandKeyword(body: ExpandKeywordDto): Promise<{
         keywords: string[];
     }>;
-    uploadCsv(file: Express.Multer.File): Promise<unknown>;
+    uploadCsv(file: Express.Multer.File): Promise<{
+        message: string;
+        total: number;
+        success: number;
+        failed: number;
+    }>;
 }
-export {};
