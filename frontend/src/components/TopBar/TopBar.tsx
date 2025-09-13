@@ -1,4 +1,5 @@
 import styled from '@emotion/styled'
+import { IconImg } from '@/components/common/IconImg'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -152,7 +153,7 @@ export function TopBar({
           <span className="emoji">{emoji}</span>
           <span className="text">
             {loading
-              ? '로딩…'
+              ? '로딩중…'
               : weather
                 ? `${weather.city} ${weather.temp}° · ${weather.desc}`
                 : err
@@ -186,7 +187,10 @@ export function TopBar({
       <SearchArea>
         <LeftControls>
           {/* 지도 위치만 동기화 (날씨는 userLocation이 바뀌면 자동으로 갱신) */}
-          <Button onClick={onSyncLocation}>📍 위치 동기화</Button>
+          <Button onClick={onSyncLocation}>
+            <IconImg src="/icons/location.png" alt="위치" />
+            위치 동기화
+          </Button>
           <RadiusSelect
             value={radius}
             onChange={(e) => setRadius(Number(e.target.value))}
@@ -201,7 +205,9 @@ export function TopBar({
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
         />
-        <Button onClick={handleSubmit}>🔍 검색</Button>
+        <Button onClick={handleSubmit}>
+          <IconImg src="/icons/search.png" alt="검색" /> 검색
+        </Button>
       </SearchArea>
     </TopBarWrapper>
   )
@@ -265,16 +271,22 @@ const AuthButtons = styled.div`
 `
 
 const AuthButton = styled.button`
-  padding: 0.4rem 0.75rem;
-  font-size: 0.9rem;
   border: 1px solid #0077cc;
-  background-color: white;
+  background-color: transparent;
   color: #0077cc;
-  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 1rem;
   cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
   &:hover {
+    color: #fff;
     background-color: #0077cc;
-    color: white;
   }
 `
 

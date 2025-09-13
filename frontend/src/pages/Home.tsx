@@ -2,10 +2,9 @@ import { Layout } from '@/components/Layout/Layout'
 import { KakaoMap } from '@/components/Map/KakaoMap'
 import { TopBar } from '@/components/TopBar/TopBar'
 import { RankingSection } from '@/components/Ranking/RankingSection'
-import { ReviewSection } from '@/components/Review/ReviewSection'
 import { useEffect, useState } from 'react'
 import type { RankingItem } from '@/types/ranking'
-import { mockKeywordSearch } from '@/mocks/keywordSearch.mock'
+import { searchPlacesByKeyword } from '@/api/search'
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:3001'
@@ -90,8 +89,8 @@ export function Home() {
 
     try {
       setLoading(true)
-      const data = await mockKeywordSearch(reqBody)
-      setRanking([...data].sort((a, b) => a.rank - b.rank).slice(0, 5))
+      const data = await searchPlacesByKeyword(reqBody)
+      setRanking((data as RankingItem[]).slice(0, 5))
     } catch (e) {
       console.error('검색 실패:', e)
       setRanking([])
@@ -119,8 +118,8 @@ export function Home() {
         items={ranking}
         loading={loading}
         keyword={searchState?.query}
+        userId={userId}
       />
-      <ReviewSection />
     </Layout>
   )
 }
