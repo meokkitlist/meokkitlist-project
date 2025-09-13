@@ -240,6 +240,7 @@ export class SearchService implements OnModuleInit {
         const r = e.raw as Restaurant;
         return {
           rank: i + 1,
+          restaurant_id: (r as any).id,
           marketName: (r as any).name,
           marketAddress: (r as any).address,
           marketUrl:
