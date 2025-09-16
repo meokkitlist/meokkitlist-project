@@ -9,9 +9,7 @@ const execAsync = promisify(exec);
 export class KeywordExtractionService {
   private readonly logger = new Logger(KeywordExtractionService.name);
 
-  constructor(
-    private readonly keywordMapService: KeywordMapService,
-  ) {}
+  constructor(private readonly keywordMapService: KeywordMapService) {}
 
   /**
    * ✅ Python 스크립트를 실행하여 키워드 추출
@@ -27,7 +25,8 @@ export class KeywordExtractionService {
 
     try {
       const { stdout, stderr } = await execAsync(cmd);
-      if (stdout.trim()) this.logger.debug(`📤 Python stdout: ${stdout.trim()}`);
+      if (stdout.trim())
+        this.logger.debug(`📤 Python stdout: ${stdout.trim()}`);
       if (stderr.trim()) this.logger.warn(`⚠️ Python stderr: ${stderr.trim()}`);
     } catch (err: any) {
       this.logger.error(`❌ 키워드 추출 스크립트 실패: ${err.message}`);

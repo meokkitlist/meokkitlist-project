@@ -9,11 +9,6 @@ export class SentimentController {
   async testAnalyze(@Body() body: any) {
     const { text, restaurant_id, source, user_id } = body;
 
-    return this.sentimentService.analyze(
-      text,
-      restaurant_id,
-      source,
-      user_id,
-    );
+    return this.sentimentService.analyze(text, restaurant_id, source, user_id);
   }
 }

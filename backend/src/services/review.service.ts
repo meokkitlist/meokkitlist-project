@@ -61,9 +61,14 @@ export class ReviewService {
     // ✅ 리뷰 저장 후 키워드 추출 및 Map 최신화
     try {
       await this.keywordExtractionService.runExtractorScript(restaurantId);
-      this.logger.log(`✅ 키워드 추출 및 Map 최신화 완료 (restaurant_id=${restaurantId})`);
+      this.logger.log(
+        `✅ 키워드 추출 및 Map 최신화 완료 (restaurant_id=${restaurantId})`,
+      );
     } catch (err) {
-      this.logger.warn(`⚠️ 키워드 추출 실패 (restaurant_id=${restaurantId})`, err);
+      this.logger.warn(
+        `⚠️ 키워드 추출 실패 (restaurant_id=${restaurantId})`,
+        err,
+      );
     }
 
     return {

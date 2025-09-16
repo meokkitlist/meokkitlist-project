@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Restaurant } from '../entities/restaurant.entity';
@@ -57,13 +53,19 @@ export class SearchService implements OnModuleInit {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? (parsed as string[]) : [];
       } catch {
-        return raw.split(',').map((s) => s.trim()).filter(Boolean);
+        return raw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
     }
     return [];
   }
 
-  private calcMatchScore(restaurantKeywords: string[], needleKeywords: string[]) {
+  private calcMatchScore(
+    restaurantKeywords: string[],
+    needleKeywords: string[],
+  ) {
     const rset = new Set(restaurantKeywords.map((k) => k.trim()));
     let score = 0;
     const matched: string[] = [];
@@ -106,7 +108,9 @@ export class SearchService implements OnModuleInit {
 
     // 1) keywords 배열이 직접 들어온 경우
     if (dto.keywords && dto.keywords.length > 0) {
-      this.logger.log(`📌 키워드 배열 입력 받음: ${JSON.stringify(dto.keywords)}`);
+      this.logger.log(
+        `📌 키워드 배열 입력 받음: ${JSON.stringify(dto.keywords)}`,
+      );
 
       const knownKeywords: string[] = [];
       const unknownKeywords: string[] = [];
@@ -123,22 +127,28 @@ export class SearchService implements OnModuleInit {
 
       if (unknownKeywords.length > 0) {
         this.logger.log(`🤖 GPT 호출 필요: ${JSON.stringify(unknownKeywords)}`);
-        const gptResults = await this.gptService.extractKeywords(unknownKeywords.join(', '));
+        const gptResults = await this.gptService.extractKeywords(
+          unknownKeywords.join(', '),
+        );
 
         // GPT 결과 중 Map에 있는 것만 필터
         expandedKeywords = gptResults.filter(
           (k) => this.keywordMapService.getRestaurantIdsByKeyword(k).length > 0,
         );
 
-        this.logger.log(`🔁 GPT 유사어 중 사용 가능한 키워드: ${JSON.stringify(expandedKeywords)}`);
+        this.logger.log(
+          `🔁 GPT 유사어 중 사용 가능한 키워드: ${JSON.stringify(expandedKeywords)}`,
+        );
       }
 
       extractedKeywords = [...knownKeywords, ...expandedKeywords];
 
-    // 2) keyword 단일 문자열이 들어온 경우
+      // 2) keyword 단일 문자열이 들어온 경우
     } else if (keyword) {
       extractedKeywords = await this.gptService.extractKeywords(keyword);
-      this.logger.log(`🤖 GPT 문장 기반 키워드 추출: ${JSON.stringify(extractedKeywords)}`);
+      this.logger.log(
+        `🤖 GPT 문장 기반 키워드 추출: ${JSON.stringify(extractedKeywords)}`,
+      );
     }
 
     if (!extractedKeywords || extractedKeywords.length === 0) {
@@ -156,7 +166,7 @@ export class SearchService implements OnModuleInit {
     const restaurantIdSet = new Set<number>();
     for (const kw of extractedKeywords) {
       const ids = this.keywordMapService.getRestaurantIdsByKeyword(kw);
-      ids.forEach(id => restaurantIdSet.add(id));
+      ids.forEach((id) => restaurantIdSet.add(id));
     }
 
     const idList = [...restaurantIdSet];
@@ -184,7 +194,10 @@ export class SearchService implements OnModuleInit {
 
     let enriched = candidates.map((r) => {
       const rKeywords = this.safeParseKeywords((r as any).keywords);
-      const { score: matchScore, matched } = this.calcMatchScore(rKeywords, needles);
+      const { score: matchScore, matched } = this.calcMatchScore(
+        rKeywords,
+        needles,
+      );
 
       const totalScore = (r as any).total_score ?? 0;
       const reviewCount = (r as any).review_count ?? 0;
@@ -219,7 +232,8 @@ export class SearchService implements OnModuleInit {
 
     if (range && userPosition?.lat && userPosition?.lon) {
       enriched = enriched.filter(
-        (e) => e.distanceKm !== null && (e.distanceKm as number) <= Number(range),
+        (e) =>
+          e.distanceKm !== null && (e.distanceKm as number) <= Number(range),
       );
     }
 

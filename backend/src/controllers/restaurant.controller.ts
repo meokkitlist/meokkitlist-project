@@ -18,6 +18,19 @@ import {
 } from '@nestjs/swagger';
 import { RestaurantService } from '../services/restaurant.service';
 
+// ✅ 타입 직접 정의
+type MulterFile = {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination: string;
+  filename: string;
+  path: string;
+  buffer?: Buffer;
+};
+
 // 업로드 디렉토리 지정
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'csv');
 
@@ -31,7 +44,7 @@ function ensureDir(dir: string) {
   }
 }
 
-@ApiTags('Restaurant') // Swagger 그룹 이름
+@ApiTags('Restaurant')
 @Controller('restaurant')
 export class RestaurantController {
   constructor(private readonly restaurantService: RestaurantService) {
@@ -55,7 +68,7 @@ export class RestaurantController {
       fileFilter: (_req, file, cb) => {
         const ok =
           file.mimetype === 'text/csv' ||
-          file.mimetype === 'application/vnd.ms-excel' || // ✅ 추가
+          file.mimetype === 'application/vnd.ms-excel' ||
           file.originalname.toLowerCase().endsWith('.csv');
         cb(
           ok ? null : new BadRequestException('CSV 파일만 업로드 가능합니다.'),
@@ -66,7 +79,7 @@ export class RestaurantController {
     }),
   )
   @ApiOperation({ summary: 'CSV 업로드 (레스토랑 배치 저장)' })
-  @ApiConsumes('multipart/form-data') // Swagger에 파일 업로드 표시
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: '레스토랑 CSV 업로드 (헤더: name, address, lat, lon, preview)',
     schema: {
@@ -88,7 +101,7 @@ export class RestaurantController {
       },
     },
   })
-  async uploadCsv(@UploadedFile() file: Express.Multer.File) {
+  async uploadCsv(@UploadedFile() file: MulterFile) {
     if (!file?.path) {
       throw new BadRequestException('파일 업로드 실패');
     }

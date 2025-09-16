@@ -36,12 +36,14 @@ export class KakaoService {
   }
 
   // ✅ 감성 분석 더미 함수
-  async analyzeSentiment(text: string): Promise<{ sentiment: string; score: number }> {
+  async analyzeSentiment(
+    text: string,
+  ): Promise<{ sentiment: string; score: number }> {
     console.log('📩 분석할 텍스트:', text);
 
     const lower = text.toLowerCase();
     const negativeWords = ['별로', '불친절', '최악', '지저분'];
-    const isNegative = negativeWords.some(word => lower.includes(word));
+    const isNegative = negativeWords.some((word) => lower.includes(word));
 
     return {
       sentiment: isNegative ? 'negative' : 'positive',

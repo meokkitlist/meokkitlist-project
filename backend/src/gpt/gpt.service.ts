@@ -1,8 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager'; // ✅ 올바른 위치에서 import
 import { Cache } from 'cache-manager';
 import OpenAI from 'openai';
@@ -17,11 +13,11 @@ export class GptService {
 
   private readonly MODEL = process.env.GPT_MODEL?.trim() || 'gpt-3.5-turbo';
   private readonly MAX_RETURN = Number(process.env.GPT_KEYWORD_MAX_RETURN ?? 5);
-  private readonly CACHE_TTL_SEC = Number(process.env.GPT_KEYWORD_CACHE_TTL_SEC ?? 3600); // 기본 1시간
+  private readonly CACHE_TTL_SEC = Number(
+    process.env.GPT_KEYWORD_CACHE_TTL_SEC ?? 3600,
+  ); // 기본 1시간
 
-  constructor(
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-  ) {
+  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
@@ -118,7 +114,10 @@ export class GptService {
     }
 
     // 단일 키워드 fallback
-    const only = raw.replace(/^\[|\]$/g, '').trim().replace(/^"|"$/g, '');
+    const only = raw
+      .replace(/^\[|\]$/g, '')
+      .trim()
+      .replace(/^"|"$/g, '');
     return only ? [only] : [];
   }
 

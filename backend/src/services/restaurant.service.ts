@@ -1,11 +1,10 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { Restaurant } from "../entities/restaurant.entity";
-import { CreateRestaurantDto } from "../dto/create-restaurant.dto";
-import * as fs from "fs";
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Restaurant } from '../entities/restaurant.entity';
+import { CreateRestaurantDto } from '../dto/create-restaurant.dto';
+import * as fs from 'fs';
 import * as csv from 'csv-parser';
-
 
 @Injectable()
 export class RestaurantService {
@@ -42,12 +41,12 @@ export class RestaurantService {
       let s = String(value).trim();
 
       if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
-        s = s.replace(/,/g, ""); // "1,234.56" → "1234.56"
+        s = s.replace(/,/g, ''); // "1,234.56" → "1234.56"
       } else if (/^\d+,\d+$/.test(s)) {
-        s = s.replace(",", "."); // "12,34" → "12.34"
+        s = s.replace(',', '.'); // "12,34" → "12.34"
       }
 
-      s = s.replace(/[^0-9.\-+eE]/g, ""); // 숫자/소수점 외 제거
+      s = s.replace(/[^0-9.\-+eE]/g, ''); // 숫자/소수점 외 제거
       const n = Number(s);
       return Number.isFinite(n) ? n : NaN;
     };
@@ -55,62 +54,61 @@ export class RestaurantService {
     // ── 헤더 정규화
     const normalizeHeader = (header: string): string => {
       const h = header
-        .replace(/\uFEFF/g, "")
-        .normalize("NFKC")
+        .replace(/\uFEFF/g, '')
+        .normalize('NFKC')
         .trim()
-        .replace(/\s+/g, "")
-        .replace(/[(){}\[\]\-]/g, "")
+        .replace(/\s+/g, '')
+        .replace(/[(){}\[\]\-]/g, '')
         .toLowerCase();
 
       const aliasMap: Record<string, string> = {
-        name: "name",
-        이름: "name",
-        storename: "name",
+        name: 'name',
+        이름: 'name',
+        storename: 'name',
 
-        address: "address",
-        주소: "address",
-        storeaddress: "address",
+        address: 'address',
+        주소: 'address',
+        storeaddress: 'address',
 
-        lat: "lat",
-        latitude: "lat",
-        위도: "lat",
-        lat위도: "lat",
+        lat: 'lat',
+        latitude: 'lat',
+        위도: 'lat',
+        lat위도: 'lat',
 
-        lon: "lon",
-        lng: "lon",
-        longitude: "lon",
-        경도: "lon",
-        lon경도: "lon",
+        lon: 'lon',
+        lng: 'lon',
+        longitude: 'lon',
+        경도: 'lon',
+        lon경도: 'lon',
 
-        preview: "preview",
-        미리보기: "preview",
+        preview: 'preview',
+        미리보기: 'preview',
       };
 
       return aliasMap[h] ?? h;
     };
 
     await new Promise<void>((resolve, reject) => {
-      fs.createReadStream(filePath, { encoding: "utf8" })
+      fs.createReadStream(filePath, { encoding: 'utf8' })
         .pipe(
           csv({
-            
             mapHeaders: ({ header }) => normalizeHeader(header),
             mapValues: ({ value }) =>
-              typeof value === "string" ? value.trim() : value,
+              typeof value === 'string' ? value.trim() : value,
           }),
         )
-        .on("data", (row: any) => {
+        .on('data', (row: any) => {
           try {
             this.logger.debug(`📌 CSV Row(raw): ${JSON.stringify(row)}`);
 
-            const nameRaw = row["name"] ?? "";
-            const addressRaw = row["address"] ?? "";
-            const latRaw = row["lat"];
-            const lonRaw = row["lon"];
-            const previewRaw = row["preview"];
+            const nameRaw = row['name'] ?? '';
+            const addressRaw = row['address'] ?? '';
+            const latRaw = row['lat'];
+            const lonRaw = row['lon'];
+            const previewRaw = row['preview'];
 
-            const name = String(nameRaw || "").trim();
-            const address = String(addressRaw || "").trim();
+            const name = String(nameRaw || '').trim();
+            const address = String(addressRaw || '').trim();
             const lat = normalizeNumber(latRaw);
             const lon = normalizeNumber(lonRaw);
             const preview =
@@ -161,18 +159,18 @@ export class RestaurantService {
             );
           }
         })
-        .once("end", () => {
+        .once('end', () => {
           this.logger.log(`✅ CSV 파싱 완료: ${rows.length}개 유효 row`);
           resolve();
         })
-        .once("error", (err: Error) => {
+        .once('error', (err: Error) => {
           this.logger.error(`❌ CSV Parse Error: ${err.message}`);
           reject(err);
         });
     });
 
     if (rows.length === 0) {
-      this.logger.warn("⚠️ 유효한 row가 없어 저장하지 않습니다.");
+      this.logger.warn('⚠️ 유효한 row가 없어 저장하지 않습니다.');
       return { inserted: 0 };
     }
 

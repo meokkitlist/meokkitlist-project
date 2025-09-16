@@ -15,4 +15,3 @@ export class AppController {
     return '안녕하세요! 여긴 백엔드입니다.';
   }
 }
-

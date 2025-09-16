@@ -19,8 +19,9 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
 
-    // ✅ 여기에 추가됨
-    "typeRoots": ["./node_modules/@types", "./src/types"]
+    // ✅ 타입 루트 및 타입 지정 추가
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "types": ["node", "express"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { SignupDto, LoginDto } from './dto';
@@ -7,7 +15,10 @@ import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService, private cfg: ConfigService) {}
+  constructor(
+    private auth: AuthService,
+    private cfg: ConfigService,
+  ) {}
 
   @Post('signup')
   async signup(@Body() dto: SignupDto) {
@@ -17,7 +28,10 @@ export class AuthController {
 
   @HttpCode(200)
   @Post('login')
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const { token } = await this.auth.login(dto.email, dto.password);
     res.cookie('token', token, {
       httpOnly: true,
