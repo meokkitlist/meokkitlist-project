@@ -15,7 +15,7 @@ interface KakaoMapProps {
   rankingItems?: RankingItem[]
 }
 
-const APP_KEY = '9026e50f08b88ebc0621d1d6ef925b2b'
+const APP_KEY = import.meta.env.VITE_KAKAO_MAP_APP_KEY as string
 
 // SDK 1회 로더
 let sdkLoading: Promise<void> | null = null

@@ -199,45 +199,6 @@ const SubmitBtn = styled.button`
   }
 `
 
-const Divider = styled.div`
-  text-align: center;
-  color: #999;
-  font-size: 0.85rem;
-  margin: 0.25rem 0;
-  position: relative;
-  &:before,
-  &:after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    width: 42%;
-    height: 1px;
-    background: #eee;
-  }
-  &:before {
-    left: 0;
-  }
-  &:after {
-    right: 0;
-  }
-`
-
-const SocialRow = styled.div`
-  display: flex;
-  gap: 0.5rem;
-  > button {
-    flex: 1;
-  }
-`
-
-const SocialBtn = styled.button`
-  padding: 0.6rem 0.8rem;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  background: #fafafa;
-  cursor: pointer;
-`
-
 const MutedRow = styled.div`
   margin-top: 0.25rem;
   color: #666;
