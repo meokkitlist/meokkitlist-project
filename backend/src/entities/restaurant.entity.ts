@@ -5,43 +5,49 @@ import {
   PrimaryGeneratedColumn,
   OneToMany,
   Index,
-} from 'typeorm';
-import { Review } from './review.entity';
+} from "typeorm";
+import { Review } from "./review.entity";
 
-@Entity('restaurant')
-@Index('idx_restaurant_name', ['name'])
-@Index('idx_restaurant_review_count', ['review_count'])
+@Entity("restaurant")
+@Index("idx_restaurant_name", ["name"])
+@Index("idx_restaurant_review_count", ["review_count"])
 export class Restaurant {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'text' })
+  @Column({ type: "text" })
   name: string;
 
-  @Column('text')
+  @Column("text")
   address: string;
 
   // lat/lon → nullable 허용
-  @Column('float', { nullable: true })
+  @Column("float", { nullable: true })
   lat: number | null;
 
-  @Column('float', { nullable: true })
+  @Column("float", { nullable: true })
   lon: number | null;
 
-  @Column('simple-json', { nullable: true })
+  @Column("simple-json", { nullable: true })
   keywords: string[] | null;
 
-  @Column('int', { default: 0 })
+  @Column("int", { default: 0 })
   review_count: number;
 
-  @Column('float', { default: 0 })
+  @Column({ type: "float", default: 0, nullable: false })
   total_score: number;
 
-  @Column('float', { default: 0 })
+  @Column("float", { default: 0 })
   naver_score: number;
 
-  @Column('text', { nullable: true })
+  @Column("text", { nullable: true })
   preview: string | null;
+
+  @Column("text", { nullable: true })
+  url: string | null;
+
+  @Column("text", { nullable: true })
+  review: string | null;
 
   @OneToMany(() => Review, (review) => review.restaurant, { cascade: false })
   reviews: Review[];

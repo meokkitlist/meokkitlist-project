@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager'; // ✅ 올바른 위치에서 import
-import { Cache } from 'cache-manager';
-import OpenAI from 'openai';
-import * as dotenv from 'dotenv';
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { CACHE_MANAGER } from "@nestjs/cache-manager"; // ✅ 올바른 위치에서 import
+import { Cache } from "cache-manager";
+import OpenAI from "openai";
+import * as dotenv from "dotenv";
+import { KeywordMapService } from "../services/keyword-map.service";
 
 dotenv.config();
 
@@ -11,13 +12,16 @@ export class GptService {
   private readonly logger = new Logger(GptService.name);
   private readonly openai: OpenAI;
 
-  private readonly MODEL = process.env.GPT_MODEL?.trim() || 'gpt-3.5-turbo';
+  private readonly MODEL = process.env.GPT_MODEL?.trim() || "gpt-3.5-turbo";
   private readonly MAX_RETURN = Number(process.env.GPT_KEYWORD_MAX_RETURN ?? 5);
   private readonly CACHE_TTL_SEC = Number(
     process.env.GPT_KEYWORD_CACHE_TTL_SEC ?? 3600,
   ); // 기본 1시간
 
-  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {
+  constructor(
+    private readonly keywordmapService: KeywordMapService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+  ) {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
@@ -39,13 +43,21 @@ export class GptService {
     }
 
     // ✅ 2. GPT 프롬프트 구성
-    const prompt = [
-      '다음 문장에서 음식점 추천에 유용한 핵심 검색 키워드만 뽑아줘.',
-      '반드시 JSON 배열 형태로만 응답해. 예: ["삼겹살","고기","구이","신선","맛집"]',
-      `문장: "${normalized}"`,
-      `최대 ${this.MAX_RETURN}개로 제한.`,
-    ].join('\n');
-
+    let prompt = "";
+    try {
+      const keyList = Array.from(this.keywordmapService.getMap().keys());
+      this.logger.log(`🔑 KEY목록 갯수: ${keyList.length}`);
+      prompt = [
+        "KEY목록에서 문장과 연관이 있는 단어들을 뽑아줘.",
+        "반드시 JSON 배열 형태로만 응답해.",
+        `KEY목록 : ${JSON.stringify(keyList)}`,
+        `문장: "${normalized}"`,
+        `최소 ${this.MAX_RETURN}개로 제한.`,
+      ].join("\n");
+    } catch (err) {
+      this.logger.error("❌ KEY목록 구성 실패", err as any);
+      throw new Error("KEY목록 구성 실패");
+    }
     let keywords: string[] = [];
 
     // ✅ 3. GPT 호출
@@ -55,16 +67,18 @@ export class GptService {
         model: this.MODEL,
         messages: [
           {
-            role: 'system',
+            role: "system",
             content:
-              '너는 음식점/맛집 검색 키워드 추출 전문가다. 반드시 JSON 배열로만 출력해.',
+              "반드시 JSON 배열로만 출력해." +
+              "사용자가 제시한 KEY목록에서만 골라야한다." +
+              "절대 새로운 단어를 만들어내면 안된다.",
           },
-          { role: 'user', content: prompt },
+          { role: "user", content: prompt },
         ],
         temperature: 0.3,
       });
 
-      const raw = response.choices[0]?.message?.content?.trim() ?? '[]';
+      const raw = response.choices[0]?.message?.content?.trim() ?? "[]";
       keywords = this.parseKeywordsFromResponse(raw);
 
       if (!Array.isArray(keywords) || keywords.length === 0) {
@@ -72,7 +86,7 @@ export class GptService {
         keywords = this.simpleFallbackExtract(normalized);
       }
     } catch (err) {
-      this.logger.error('❌ GPT 호출 실패, fallback 사용', err as any);
+      this.logger.error("❌ GPT 호출 실패, fallback 사용", err as any);
       keywords = this.simpleFallbackExtract(normalized);
     }
 
@@ -94,8 +108,8 @@ export class GptService {
 
   private parseKeywordsFromResponse(raw: string): string[] {
     try {
-      const start = raw.indexOf('[');
-      const end = raw.lastIndexOf(']');
+      const start = raw.indexOf("[");
+      const end = raw.lastIndexOf("]");
       if (start !== -1 && end !== -1 && end > start) {
         const json = raw.substring(start, end + 1);
         const arr = JSON.parse(json);
@@ -106,18 +120,18 @@ export class GptService {
     }
 
     // 쉼표 기반 파싱 fallback
-    if (raw.includes(',')) {
+    if (raw.includes(",")) {
       return raw
-        .split(',')
-        .map((s) => s.trim().replace(/^"|"$/g, ''))
+        .split(",")
+        .map((s) => s.trim().replace(/^"|"$/g, ""))
         .filter(Boolean);
     }
 
     // 단일 키워드 fallback
     const only = raw
-      .replace(/^\[|\]$/g, '')
+      .replace(/^\[|\]$/g, "")
       .trim()
-      .replace(/^"|"$/g, '');
+      .replace(/^"|"$/g, "");
     return only ? [only] : [];
   }
 

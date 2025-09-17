@@ -3,14 +3,14 @@ import { HttpService } from '@nestjs/axios';
 
 // ✅ 분석 결과 타입
 export interface SentimentResult {
-  sentiment: string; // 예: "Positive"
-  score: number; // 예: 78
-  emoji: string; // 예: 😊
-  percent: number; // 예: 78
+  sentiment: string;         // 예: "Positive"
+  score: number;             // 예: 78
+  emoji: string;             // 예: 😊
+  percent: number;           // 예: 78
   raw: {
     top_label: string;
     top_prob: number;
-    keywords?: string[]; // ✅ 키워드 포함 (FastAPI 응답에서 받을 경우)
+    keywords?: string[];     // ✅ 키워드 포함 (FastAPI 응답에서 받을 경우)
     ui?: {
       emoji: string;
       percent: number;
@@ -38,7 +38,7 @@ export class SentimentService {
           source,
           user_id: userId,
         },
-        { headers: { 'Content-Type': 'application/json' } },
+        { headers: { 'Content-Type': 'application/json' } }
       );
 
       const data = response.data;
@@ -48,10 +48,7 @@ export class SentimentService {
       }
 
       // ✅ 라벨-점수 매핑
-      const labelToBaseScore: Record<
-        string,
-        { sentiment: string; base: number }
-      > = {
+      const labelToBaseScore: Record<string, { sentiment: string; base: number }> = {
         very_neg: { sentiment: 'Very Negative', base: 10 },
         neg: { sentiment: 'Negative', base: 30 },
         neu: { sentiment: 'Neutral', base: 50 },
@@ -96,7 +93,7 @@ export class SentimentService {
       const response = await this.httpService.axiosRef.post(
         'http://localhost:8001/expand_keywords',
         { keyword },
-        { headers: { 'Content-Type': 'application/json' } },
+        { headers: { 'Content-Type': 'application/json' } }
       );
 
       const keywords = response.data?.keywords;

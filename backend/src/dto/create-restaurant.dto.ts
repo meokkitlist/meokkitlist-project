@@ -1,5 +1,9 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsArray,
+} from 'class-validator';
 
 export class CreateRestaurantDto {
   @IsString()
@@ -9,12 +13,10 @@ export class CreateRestaurantDto {
   address: string;
 
   @IsOptional()
-  @Type(() => Number)
   @IsNumber()
   lat: number | null;
 
   @IsOptional()
-  @Type(() => Number)
   @IsNumber()
   lon: number | null;
 
@@ -23,14 +25,27 @@ export class CreateRestaurantDto {
   preview?: string | null;
 
   @IsOptional()
+  @IsNumber()
   review_count?: number;
 
   @IsOptional()
+  @IsNumber()
   total_score?: number;
 
   @IsOptional()
+  @IsNumber()
   naver_score?: number;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true }) // 배열 안 요소가 문자열임을 보장
   keywords?: string[] | null;
+
+  @IsOptional()
+  @IsString()
+  url?: string | null;
+
+  @IsOptional()
+  @IsString()
+  review?: string | null;
 }

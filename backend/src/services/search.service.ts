@@ -1,11 +1,11 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
-import { Restaurant } from '../entities/restaurant.entity';
-import { SearchKeywordDto } from '../dto/search-keyword.dto';
-import { GptService } from '../gpt/gpt.service';
-import { KeywordMapService } from './keyword-map.service';
-import { SCORE_WEIGHTS } from '../config/ranking.config';
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { In, Repository } from "typeorm";
+import { Restaurant } from "../entities/restaurant.entity";
+import { SearchKeywordDto } from "../dto/search-keyword.dto";
+import { GptService } from "../gpt/gpt.service";
+import { KeywordMapService } from "./keyword-map.service";
+import { SCORE_WEIGHTS } from "../config/ranking.config";
 
 type LatLng = { lat: number; lon: number };
 
@@ -32,81 +32,11 @@ export class SearchService implements OnModuleInit {
     return Object.fromEntries(this.keywordMapService.getMap());
   }
 
-  private haversine(a: LatLng, b: LatLng): number {
-    const R = 6371;
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const dLat = toRad(b.lat - a.lat);
-    const dLon = toRad(b.lon - a.lon);
-    const lat1 = toRad(a.lat);
-    const lat2 = toRad(b.lat);
-    const h =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(h));
-  }
-
-  private safeParseKeywords(raw: unknown): string[] {
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw as string[];
-    if (typeof raw === 'string') {
-      try {
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? (parsed as string[]) : [];
-      } catch {
-        return raw
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-    }
-    return [];
-  }
-
-  private calcMatchScore(
-    restaurantKeywords: string[],
-    needleKeywords: string[],
-  ) {
-    const rset = new Set(restaurantKeywords.map((k) => k.trim()));
-    let score = 0;
-    const matched: string[] = [];
-    for (const kw of needleKeywords) {
-      const k = kw.trim();
-      const hit =
-        rset.has(k) ||
-        Array.from(rset).some((rk) => rk.includes(k) || k.includes(rk));
-      if (hit) {
-        score += 1;
-        matched.push(k);
-      }
-    }
-    return { score, matched };
-  }
-
-  private calcFinalScore({
-    matchScore,
-    totalScore,
-    reviewCount,
-    sentimentScore,
-  }: {
-    matchScore: number;
-    totalScore: number;
-    reviewCount: number;
-    sentimentScore: number;
-  }): number {
-    return (
-      matchScore * SCORE_WEIGHTS.matchScore +
-      totalScore * SCORE_WEIGHTS.totalScore +
-      reviewCount * SCORE_WEIGHTS.reviewCount +
-      sentimentScore * SCORE_WEIGHTS.sentimentScore
-    );
-  }
-
   async searchByKeyword(dto: SearchKeywordDto & { keywords?: string[] }) {
     const { keyword, userPosition, range } = dto;
 
     let extractedKeywords: string[] = [];
 
-    // 1) keywords 배열이 직접 들어온 경우
     if (dto.keywords && dto.keywords.length > 0) {
       this.logger.log(
         `📌 키워드 배열 입력 받음: ${JSON.stringify(dto.keywords)}`,
@@ -128,7 +58,7 @@ export class SearchService implements OnModuleInit {
       if (unknownKeywords.length > 0) {
         this.logger.log(`🤖 GPT 호출 필요: ${JSON.stringify(unknownKeywords)}`);
         const gptResults = await this.gptService.extractKeywords(
-          unknownKeywords.join(', '),
+          unknownKeywords.join(", "),
         );
 
         // GPT 결과 중 Map에 있는 것만 필터
@@ -142,8 +72,6 @@ export class SearchService implements OnModuleInit {
       }
 
       extractedKeywords = [...knownKeywords, ...expandedKeywords];
-
-      // 2) keyword 단일 문자열이 들어온 경우
     } else if (keyword) {
       extractedKeywords = await this.gptService.extractKeywords(keyword);
       this.logger.log(
@@ -158,11 +86,10 @@ export class SearchService implements OnModuleInit {
           resultCount: 0,
         },
         data: [],
-        message: '추천에 사용할 키워드를 찾을 수 없었어요.',
+        message: "추천에 사용할 키워드를 찾을 수 없었어요.",
       };
     }
 
-    // 🔎 KeywordMap 기반 검색
     const restaurantIdSet = new Set<number>();
     for (const kw of extractedKeywords) {
       const ids = this.keywordMapService.getRestaurantIdsByKeyword(kw);
@@ -179,14 +106,10 @@ export class SearchService implements OnModuleInit {
       });
     }
 
-    // 🔎 DB fallback 검색 (keywords + name + address + preview)
     if (candidates.length === 0 && keyword) {
       candidates = await this.restaurantRepo
-        .createQueryBuilder('r')
-        .where('r.keywords LIKE :kw', { kw: `%${keyword}%` })
-        .orWhere('r.name LIKE :kw', { kw: `%${keyword}%` })
-        .orWhere('r.address LIKE :kw', { kw: `%${keyword}%` })
-        .orWhere('r.preview LIKE :kw', { kw: `%${keyword}%` })
+        .createQueryBuilder("r")
+        .where("r.keywords LIKE :kw", { kw: `%${keyword}%` })
         .getMany();
     }
 
@@ -260,14 +183,13 @@ export class SearchService implements OnModuleInit {
       data: top.map((e, i) => {
         const r = e.raw as Restaurant;
         return {
-          id: r.id, // 🔥 팀원 요구사항 반영: id 반환
           rank: i + 1,
-          marketName: r.name,
-          marketAddress: r.address,
-          preview: r.preview, // 🔥 팀원 요구사항 반영: preview 반환
+          restaurant_id: (r as any).id,
+          marketName: (r as any).name,
+          marketAddress: (r as any).address,
           marketUrl:
             r.lat && r.lon
-              ? `https://map.kakao.com/link/to/${encodeURIComponent(r.name)},${r.lat},${r.lon}`
+              ? `https://map.kakao.com/link/to/${encodeURIComponent((r as any).name)},${r.lat},${r.lon}`
               : null,
           relatedKeyword: this.safeParseKeywords((r as any).keywords),
           keywordsMatched: e.keywordsMatched,
@@ -278,12 +200,81 @@ export class SearchService implements OnModuleInit {
           finalScore: e.finalScore,
           naverScore: (r as any).naver_score ?? null,
           coordinates: {
-            lat: r.lat ?? null,
-            lon: r.lon ?? null,
+            lat: (r as any).lat ?? null,
+            lon: (r as any).lon ?? null,
           },
           distanceKm: e.distanceKm,
         };
       }),
     };
+  }
+
+  private haversine(a: LatLng, b: LatLng): number {
+    const R = 6371;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lon - a.lon);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  private safeParseKeywords(raw: unknown): string[] {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw as string[];
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? (parsed as string[]) : [];
+      } catch {
+        return raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+    return [];
+  }
+
+  private calcMatchScore(
+    restaurantKeywords: string[],
+    needleKeywords: string[],
+  ) {
+    const rset = new Set(restaurantKeywords.map((k) => k.trim()));
+    let score = 0;
+    const matched: string[] = [];
+    for (const kw of needleKeywords) {
+      const k = kw.trim();
+      const hit =
+        rset.has(k) ||
+        Array.from(rset).some((rk) => rk.includes(k) || k.includes(rk));
+      if (hit) {
+        score += 1;
+        matched.push(k);
+      }
+    }
+    return { score, matched };
+  }
+
+  private calcFinalScore({
+    matchScore,
+    totalScore,
+    reviewCount,
+    sentimentScore,
+  }: {
+    matchScore: number;
+    totalScore: number;
+    reviewCount: number;
+    sentimentScore: number;
+  }): number {
+    return (
+      matchScore * SCORE_WEIGHTS.matchScore +
+      totalScore * SCORE_WEIGHTS.totalScore +
+      reviewCount * SCORE_WEIGHTS.reviewCount +
+      sentimentScore * SCORE_WEIGHTS.sentimentScore
+    );
   }
 }
