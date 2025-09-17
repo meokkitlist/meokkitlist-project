@@ -44,6 +44,7 @@ export class KeywordMapService {
 
   // ✅ 단일 키워드 → 관련 가게 id[]
   getRestaurantIdsByKeyword(keyword: string): number[] {
+    this.logger.log(`🔍 키워드 조회: "${keyword}"`);
     return this.keywordToRestaurantMap.get(keyword.trim()) || [];
   }
 

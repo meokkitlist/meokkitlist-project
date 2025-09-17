@@ -23,8 +23,15 @@ export class RestaurantService {
       total_score: data.total_score ?? 0,
       naver_score: data.naver_score ?? 0,
       preview: data.preview ?? null,
+      url: data.url ?? null,
+      review: data.review ?? null,
     });
     return this.restaurantRepo.save(restaurant);
+  }
+
+  // 가게이름으로 레스토랑 조회 (정확히 일치)
+  async findByName(name: string): Promise<Restaurant | null> {
+    return this.restaurantRepo.findOne({ where: { name } });
   }
 
   /** CSV 파일(헤더: name,address,lat,lon[,preview])을 읽어 일괄 insert */
@@ -35,61 +42,57 @@ export class RestaurantService {
 
     const rows: CreateRestaurantDto[] = [];
 
-    // ── 숫자 문자열을 안전하게 number로 변환 (천단위/소수점/기호 처리)
+    // 숫자 변환 함수
     const normalizeNumber = (value: unknown): number => {
       if (value === null || value === undefined) return NaN;
       let s = String(value).trim();
-
-      // "1,234.56" → 천단위 콤마 제거
       if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
         s = s.replace(/,/g, "");
       } else if (/^\d+,\d+$/.test(s)) {
-        // "12,34" → 유럽식 소수점 콤마를 점으로
         s = s.replace(",", ".");
       }
-
-      // 숫자/소수점/부호/e 표기 외 제거 (예: 37.5666°)
       s = s.replace(/[^0-9.\-+eE]/g, "");
-
       const n = Number(s);
       return Number.isFinite(n) ? n : NaN;
     };
 
-    // ── 헤더 정규화: BOM 제거, 공백·괄호 제거, 소문자화 후 대표 키로 매핑
+    // 헤더 정규화 및 매핑
     const normalizeHeader = (header: string): string => {
       const h = header
-        .replace(/\uFEFF/g, "") // BOM 제거
+        .replace(/\uFEFF/g, "")
         .normalize("NFKC")
         .trim()
-        .replace(/\s+/g, "") // 모든 공백 제거
-        .replace(/[(){}\[\]\-]/g, "") // 괄호/대시 제거
+        .replace(/\s+/g, "")
+        .replace(/[(){}\[\]\-]/g, "")
         .toLowerCase();
 
       const aliasMap: Record<string, string> = {
-        // name
+        id: "id",
+        아이디: "id",
         name: "name",
         이름: "name",
         storename: "name",
-
-        // address
+        storeName: "name",
         address: "address",
         주소: "address",
         storeaddress: "address",
-
-        // lat
+        url: "url",
+        링크: "url",
         lat: "lat",
         latitude: "lat",
         위도: "lat",
         lat위도: "lat",
-
-        // lon/lng
         lon: "lon",
         lng: "lon",
         longitude: "lon",
         경도: "lon",
         lon경도: "lon",
-
-        // preview
+        review: "review",
+        리뷰: "review",
+        review_count: "review_count",
+        리뷰수: "review_count",
+        naver_score: "naver_score",
+        네이버점수: "naver_score",
         preview: "preview",
         미리보기: "preview",
       };
@@ -111,25 +114,24 @@ export class RestaurantService {
           try {
             this.logger.debug(`📌 CSV Row(raw): ${JSON.stringify(row)}`);
 
-            // 정규화된 키로 그대로 접근
-            const nameRaw = row["name"] ?? "";
-            const addressRaw = row["address"] ?? "";
-            const latRaw = row["lat"];
-            const lonRaw = row["lon"];
-            const previewRaw = row["preview"];
-
-            const name = String(nameRaw || "").trim();
-            const address = String(addressRaw || "").trim();
-            const lat = normalizeNumber(latRaw);
-            const lon = normalizeNumber(lonRaw);
+            const name = String(row["name"] ?? "").trim();
+            const address = String(row["address"] ?? "").trim();
+            const lat = normalizeNumber(row["lat"]);
+            const lon = normalizeNumber(row["lon"]);
             const preview =
-              previewRaw !== undefined && previewRaw !== null
-                ? String(previewRaw).trim()
+              row["preview"] !== undefined && row["preview"] !== null
+                ? String(row["preview"]).trim()
                 : undefined;
-
-            this.logger.debug(
-              `   - Parsed → name: "${name}", address: "${address}", lat: ${lat}, lon: ${lon}`,
-            );
+            const url =
+              row["url"] !== undefined && row["url"] !== null
+                ? String(row["url"]).trim()
+                : undefined;
+            const review =
+              row["review"] !== undefined && row["review"] !== null
+                ? String(row["review"]).trim()
+                : undefined;
+            const review_count = normalizeNumber(row["review_count"]);
+            const naver_score = normalizeNumber(row["naver_score"]);
 
             // 최소 유효성 검사
             if (!name) {
@@ -159,10 +161,12 @@ export class RestaurantService {
               lat,
               lon,
               preview,
-              review_count: 0,
+              url,
+              review,
+              review_count: Number.isNaN(review_count) ? 0 : review_count,
               total_score: 0,
-              naver_score: 0,
-            });
+              naver_score: Number.isNaN(naver_score) ? 0 : naver_score,
+            } as CreateRestaurantDto); // 타입 단언 추가
           } catch (e) {
             this.logger.error(
               `❌ Row parse error: ${
@@ -186,11 +190,20 @@ export class RestaurantService {
       return { inserted: 0 };
     }
 
-    // TypeORM 저장
-    const entities = rows.map((dto) => this.restaurantRepo.create(dto));
+    const entities = rows.map((dto) =>
+      this.restaurantRepo.create({
+        ...dto,
+        keywords: dto.keywords ?? null,
+        review_count: dto.review_count ?? 0,
+        total_score: dto.total_score ?? 0,
+        naver_score: dto.naver_score ?? 0,
+        preview: dto.preview ?? null,
+        url: dto.url ?? null,
+        review: dto.review ?? null,
+      }),
+    );
     await this.restaurantRepo.save(entities);
 
-    // 업로드 임시 파일 삭제(필요 시)
     try {
       await fs.promises.unlink(filePath);
       this.logger.log(`🗑️ 업로드 임시 파일 삭제: ${filePath}`);

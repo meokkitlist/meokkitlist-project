@@ -16,10 +16,12 @@ export class KeywordExtractionService {
    * @param restaurantId 선택적으로 식당 ID만 처리
    */
   async runExtractorScript(restaurantId?: number): Promise<void> {
-    const scriptPath = "backend/scripts/keyword_extractor.py";
+    const pythonExecutable = process.env.PYTHON_PATH ?? "python";
+    const scriptPath =
+      process.env.KEYWORD_EXTRACTOR_PATH ?? "scripts/keyword_extractor.py";
     const cmd = restaurantId
-      ? `python ${scriptPath} ${restaurantId}`
-      : `python ${scriptPath}`;
+      ? `"${pythonExecutable}" ${scriptPath} ${restaurantId}`
+      : `"${pythonExecutable}" ${scriptPath}`;
 
     this.logger.log(`🚀 키워드 추출 스크립트 실행: ${cmd}`);
 

@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Logger,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -19,14 +20,15 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProperty,
+  ApiPropertyOptional,
   ApiTags,
 } from "@nestjs/swagger";
 import { IsEnum, IsOptional, IsString } from "class-validator";
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Readable } from "stream";
 
 import { ReviewService } from "../services/review.service";
 import { SentimentService } from "../services/sentiment.service";
+import { RestaurantService } from "../services/restaurant.service";
 
 // =====================
 // Swagger DTOs & Types
@@ -77,9 +79,12 @@ function ensureDir(dir: string) {
 @ApiTags("Review")
 @Controller("review")
 export class ReviewController {
+  private readonly logger = new Logger(ReviewController.name);
   constructor(
     private readonly reviewService: ReviewService,
     private readonly sentimentService: SentimentService,
+    private readonly restaurantService: RestaurantService,
+    // 추가
   ) {
     ensureDir(UPLOAD_DIR);
   }
@@ -156,38 +161,76 @@ export class ReviewController {
       throw new BadRequestException("파일 업로드 실패");
     }
 
-    const results: Record<string, string>[] = [];
+    // 한글 파일명 인코딩 복원
+    const rawFilename = file.originalname;
+    const decodedFilename = decodeURIComponent(escape(rawFilename));
+    const filename = path.basename(decodedFilename);
 
+    // 파일명에서 가게이름 추출: "리뷰_가게이름_날짜.csv"
+    const match = filename.match(/^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/);
+    const storeName = match ? match[1] : null;
+    if (!storeName) {
+      throw new BadRequestException(
+        "파일명에서 가게이름을 추출할 수 없습니다. (예: 리뷰_가게이름_날짜.csv)",
+      );
+    }
+
+    // 가게이름으로 restaurant_id 조회
+    const restaurant = await this.restaurantService.findByName(storeName);
+    if (!restaurant) {
+      throw new BadRequestException(
+        `가게이름 "${storeName}"에 해당하는 레스토랑을 찾을 수 없습니다.`,
+      );
+    }
+    const restaurantId = String(restaurant.id);
+    this.logger.log("✅ 매칭된 restaurant_id:", restaurantId);
+
+    // CSV 파싱 및 리뷰 저장
+    const results: Record<string, string>[] = [];
     try {
-      // CSV 파싱
       await new Promise<void>((resolve, reject) => {
         fs.createReadStream(file.path, { encoding: "utf8" })
-          .pipe(csv())
+          .pipe(
+            csv({
+              headers: ["review"], // 첫 줄을 헤더로 인식, 이후 줄은 review 컬럼
+              separator: ",",
+              mapHeaders: ({ header }) => header.trim(),
+              mapValues: ({ value }) => value?.trim(),
+            }),
+          )
           .on("data", (row: Record<string, string>) => {
-            // 간단 전처리
-            if (row.review) row.review = row.review.trim();
+            // row.review에 리뷰가 들어옴
             if (row.review && row.review.length > 0) {
-              results.push(row);
+              results.push({ review: row.review });
             }
           })
           .on("end", () => resolve())
           .on("error", (err: Error) => reject(err));
       });
 
-      // 배치 저장
       let successCount = 0;
       let failCount = 0;
-
+      const savedReviews: any[] = [];
+      const failedReviews: { review: string; error: string }[] = [];
+      this.logger.log(`📊 총 ${results.length}개의 리뷰를 파싱했습니다.`);
       for (const row of results) {
         try {
-          await this.reviewService.createReview({
+          const res = await this.reviewService.createReview({
             text: row.review,
-            restaurant_id: row.restaurant_id ?? "0",
+            restaurant_id: restaurantId,
             user_id: undefined,
             source: ReviewSource.CRAWL,
           });
+          savedReviews.push(res.data);
           successCount++;
-        } catch {
+        } catch (err: any) {
+          this.logger.warn(
+            `❌ 리뷰 저장 실패: "${row.review}"\n에러: ${err?.message ?? err}`,
+          );
+          failedReviews.push({
+            review: row.review,
+            error: err?.message ?? String(err),
+          });
           failCount++;
         }
       }
@@ -197,13 +240,14 @@ export class ReviewController {
         total: results.length,
         success: successCount,
         failed: failCount,
+        savedReviews,
+        failedReviews,
       };
     } catch (error: any) {
       throw new BadRequestException(
         `CSV 파싱 오류: ${error?.message ?? error}`,
       );
     } finally {
-      // 업로드 파일 정리
       try {
         await fs.promises.unlink(file.path);
       } catch {

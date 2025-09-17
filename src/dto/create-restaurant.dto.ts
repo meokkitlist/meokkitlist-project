@@ -31,4 +31,12 @@ export class CreateRestaurantDto {
 
   @IsOptional()
   keywords?: string[] | null;
+
+  @IsOptional()
+  @IsString()
+  url?: string | null;
+
+  @IsOptional()
+  @IsString()
+  review?: string | null;
 }
