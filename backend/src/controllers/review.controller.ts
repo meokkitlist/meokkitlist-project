@@ -1,4 +1,3 @@
-// src/controllers/review.controller.ts
 import {
   BadRequestException,
   Body,
@@ -13,7 +12,7 @@ import csv from "csv-parser";
 import * as fs from "fs";
 import * as path from "path";
 import { diskStorage } from "multer";
-import type { Express } from "express";
+import { Express } from "express"; // ✅ 수정 (type import 대신 일반 import)
 import {
   ApiBody,
   ApiConsumes,
@@ -84,12 +83,10 @@ export class ReviewController {
     private readonly reviewService: ReviewService,
     private readonly sentimentService: SentimentService,
     private readonly restaurantService: RestaurantService,
-    // 추가
   ) {
     ensureDir(UPLOAD_DIR);
   }
 
-  // ✅ 단일 리뷰 생성
   @Post("create")
   @ApiOperation({ summary: "단일 리뷰 생성" })
   @ApiCreatedResponse({ description: "리뷰 생성 성공" })
@@ -97,7 +94,6 @@ export class ReviewController {
     return this.reviewService.createReview(body);
   }
 
-  // ✅ 키워드 확장 테스트용
   @Post("expand-keyword")
   @ApiOperation({ summary: "키워드 확장" })
   @ApiOkResponse({ description: "확장된 키워드 목록 반환" })
@@ -106,7 +102,6 @@ export class ReviewController {
     return { keywords };
   }
 
-  // ✅ CSV 업로드 및 배치 저장 (Swagger 파일 업로드 지원)
   @Post("upload-csv")
   @UseInterceptors(
     FileInterceptor("file", {
@@ -130,7 +125,7 @@ export class ReviewController {
           ok,
         );
       },
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+      limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
   @ApiOperation({ summary: "CSV 업로드(리뷰 배치 저장)" })
@@ -156,17 +151,15 @@ export class ReviewController {
       },
     },
   })
-  async uploadCsv(@UploadedFile() file: Express.Multer.File) {
+  async uploadCsv(@UploadedFile() file: Express.Multer.File) { // ✅ 타입 확실히 지정
     if (!file?.path) {
       throw new BadRequestException("파일 업로드 실패");
     }
 
-    // 한글 파일명 인코딩 복원
     const rawFilename = file.originalname;
     const decodedFilename = decodeURIComponent(escape(rawFilename));
     const filename = path.basename(decodedFilename);
 
-    // 파일명에서 가게이름 추출: "리뷰_가게이름_날짜.csv"
     const match = filename.match(/^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/);
     const storeName = match ? match[1] : null;
     if (!storeName) {
@@ -175,7 +168,6 @@ export class ReviewController {
       );
     }
 
-    // 가게이름으로 restaurant_id 조회
     const restaurant = await this.restaurantService.findByName(storeName);
     if (!restaurant) {
       throw new BadRequestException(
@@ -185,21 +177,19 @@ export class ReviewController {
     const restaurantId = String(restaurant.id);
     this.logger.log("✅ 매칭된 restaurant_id:", restaurantId);
 
-    // CSV 파싱 및 리뷰 저장
     const results: Record<string, string>[] = [];
     try {
       await new Promise<void>((resolve, reject) => {
         fs.createReadStream(file.path, { encoding: "utf8" })
           .pipe(
             csv({
-              headers: ["review"], // 첫 줄을 헤더로 인식, 이후 줄은 review 컬럼
+              headers: ["review"],
               separator: ",",
               mapHeaders: ({ header }) => header.trim(),
               mapValues: ({ value }) => value?.trim(),
             }),
           )
           .on("data", (row: Record<string, string>) => {
-            // row.review에 리뷰가 들어옴
             if (row.review && row.review.length > 0) {
               results.push({ review: row.review });
             }
@@ -212,6 +202,7 @@ export class ReviewController {
       let failCount = 0;
       const savedReviews: any[] = [];
       const failedReviews: { review: string; error: string }[] = [];
+
       this.logger.log(`📊 총 ${results.length}개의 리뷰를 파싱했습니다.`);
       for (const row of results) {
         try {

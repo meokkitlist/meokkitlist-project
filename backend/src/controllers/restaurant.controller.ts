@@ -11,6 +11,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import { RestaurantService } from "../services/restaurant.service";
+import { Express } from "express"; // ✅ 추가
 
 // 업로드 디렉토리 지정
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "csv");
@@ -55,19 +56,16 @@ export class RestaurantController {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     }),
   )
-  @ApiConsumes("multipart/form-data") // Swagger에 파일 업로드 표시
+  @ApiConsumes("multipart/form-data")
   @ApiBody({
     schema: {
       type: "object",
       properties: {
-        file: {
-          type: "string",
-          format: "binary",
-        },
+        file: { type: "string", format: "binary" },
       },
     },
   })
-  async uploadCsv(@UploadedFile() file: Express.Multer.File) {
+  async uploadCsv(@UploadedFile() file: Express.Multer.File) { // ✅ 타입 확실히 지정
     if (!file?.path) {
       throw new BadRequestException("파일 업로드 실패");
     }
