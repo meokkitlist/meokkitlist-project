@@ -46,7 +46,7 @@ import { RestaurantService } from './services/restaurant.service';
 import { Review } from './entities/review.entity';
 import { Restaurant } from './entities/restaurant.entity';
 
-// ✅ 인증 모듈
+// 인증 모듈
 import { AuthModule } from './auth/auth.module';
 
 @Module({
@@ -59,13 +59,13 @@ import { AuthModule } from './auth/auth.module';
     // 2) HTTP 모듈
     HttpModule,
 
-    // 3) DB 연결 (PostgreSQL 우선)
+    // 3) DB 연결 (PostgreSQL)
     TypeOrmModule.forRoot({
-      type: (process.env.DB_TYPE as any) || 'postgres',
-      url: process.env.DATABASE_URL,
+      type: 'postgres', // Render PostgreSQL
+      url: process.env.DATABASE_URL?.replace('postgresql://', 'postgres://'),
       entities: [Review, Restaurant],
       autoLoadEntities: true,
-      synchronize: true, // ⚠️ 개발/졸과 시연용으로 true, 운영에서는 migration 권장
+      synchronize: true, // ⚠️ 개발/시연용 → 운영은 false + migration
     }),
 
     // 4) 엔티티 레포지토리 등록
@@ -79,7 +79,7 @@ import { AuthModule } from './auth/auth.module';
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
         password: process.env.REDIS_PASSWORD || undefined,
-        ttl: 60 * 60,
+        ttl: 60 * 60, // 1시간
       }),
     }),
 
