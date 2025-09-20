@@ -53,6 +53,21 @@ export class KeywordMapService {
     return this.keywordToRestaurantMap;
   }
 
+  // ✅ 새로 추가: 부분 검색 (GPT 실패 시 fallback)
+  searchKeywords(q: string, limit = 10): string[] {
+    const Q = q.trim().toLowerCase();
+    if (!Q) return [];
+
+    const keys = Array.from(this.keywordToRestaurantMap.keys());
+    const hits = keys.filter((k) => k.toLowerCase().includes(Q));
+    return hits.slice(0, limit);
+  }
+
+  // ✅ 새로 추가: 전체 키워드 목록
+  getAllKeywordsList(): string[] {
+    return Array.from(this.keywordToRestaurantMap.keys());
+  }
+
   // ✅ 문자열 or 배열 → string[]
   private safeParseKeywords(raw: any): string[] {
     if (!raw) return [];

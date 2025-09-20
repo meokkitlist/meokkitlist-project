@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { CACHE_MANAGER } from "@nestjs/cache-manager"; // ✅ 올바른 위치에서 import
+import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Cache } from "cache-manager";
 import OpenAI from "openai";
 import * as dotenv from "dotenv";
@@ -19,7 +19,7 @@ export class GptService {
   ); // 기본 1시간
 
   constructor(
-    private readonly keywordmapService: KeywordMapService,
+    private readonly keywordMapService: KeywordMapService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {
     this.openai = new OpenAI({
@@ -31,7 +31,7 @@ export class GptService {
     const normalized = sentence.trim();
     const cacheKey = `gpt:keywords:${normalized}`;
 
-    // ✅ 1. 캐시 확인
+    // 1. 캐시 확인
     try {
       const cached = await this.cacheManager.get<string[]>(cacheKey);
       if (cached) {
@@ -42,58 +42,61 @@ export class GptService {
       this.logger.warn(`⚠️ Cache 조회 실패: ${err}`);
     }
 
-    // ✅ 2. GPT 프롬프트 구성
+    // 2. GPT 프롬프트 구성
     let prompt = "";
     try {
-      const keyList = Array.from(this.keywordmapService.getMap().keys());
+      const keyList = Array.from(this.keywordMapService.getMap().keys());
       this.logger.log(`🔑 KEY목록 갯수: ${keyList.length}`);
       prompt = [
-        "KEY목록에서 문장과 연관이 있는 단어들을 뽑아줘.",
-        "반드시 JSON 배열 형태로만 응답해.",
-        `KEY목록 : ${JSON.stringify(keyList)}`,
+        "다음 KEY목록 중에서 문장과 가장 연관된 키워드 1~5개를 고르시오.",
+        "⚠️ 반드시 KEY목록 안에서만 골라야 한다.",
+        "⚠️ 반드시 JSON 배열 형식으로만 출력하라. (예: [\"짜장면\",\"중화요리\"])",
+        `KEY목록: ${JSON.stringify(keyList)}`,
         `문장: "${normalized}"`,
-        `최소 ${this.MAX_RETURN}개로 제한.`,
       ].join("\n");
     } catch (err) {
       this.logger.error("❌ KEY목록 구성 실패", err as any);
       throw new Error("KEY목록 구성 실패");
     }
+
     let keywords: string[] = [];
 
-    // ✅ 3. GPT 호출
+    // 3. GPT 호출
     try {
       this.logger.log(`🤖 GPT 호출 시작 (model: ${this.MODEL})`);
       const response = await this.openai.chat.completions.create({
         model: this.MODEL,
         messages: [
-          {
-            role: "system",
-            content:
-              "반드시 JSON 배열로만 출력해." +
-              "사용자가 제시한 KEY목록에서만 골라야한다." +
-              "절대 새로운 단어를 만들어내면 안된다.",
-          },
+          { role: "system", content: "너는 키워드 추출기다." },
           { role: "user", content: prompt },
         ],
-        temperature: 0.3,
+        temperature: 0,
+        max_tokens: 150,
       });
 
       const raw = response.choices[0]?.message?.content?.trim() ?? "[]";
+      this.logger.debug(`📥 GPT raw=${raw}`);
       keywords = this.parseKeywordsFromResponse(raw);
 
       if (!Array.isArray(keywords) || keywords.length === 0) {
         this.logger.warn(`⚠️ GPT 응답 파싱 실패, fallback 사용. raw="${raw}"`);
-        keywords = this.simpleFallbackExtract(normalized);
+        keywords = this.keywordMapService.searchKeywords(
+          normalized,
+          this.MAX_RETURN,
+        );
       }
     } catch (err) {
       this.logger.error("❌ GPT 호출 실패, fallback 사용", err as any);
-      keywords = this.simpleFallbackExtract(normalized);
+      keywords = this.keywordMapService.searchKeywords(
+        normalized,
+        this.MAX_RETURN,
+      );
     }
 
-    // ✅ 4. 정규화 + 중복 제거
+    // 4. 정규화 + 중복 제거
     keywords = this.normalizeKeywordList(keywords).slice(0, this.MAX_RETURN);
 
-    // ✅ 5. 캐시에 저장 (TTL은 숫자로 직접 전달!)
+    // 5. 캐시에 저장 (TTL 숫자로 전달)
     try {
       await this.cacheManager.set(cacheKey, keywords, this.CACHE_TTL_SEC);
       this.logger.log(`✅ [SET] Cache 저장 완료: "${cacheKey}"`);
@@ -108,18 +111,17 @@ export class GptService {
 
   private parseKeywordsFromResponse(raw: string): string[] {
     try {
-      const start = raw.indexOf("[");
-      const end = raw.lastIndexOf("]");
-      if (start !== -1 && end !== -1 && end > start) {
-        const json = raw.substring(start, end + 1);
-        const arr = JSON.parse(json);
+      // JSON 배열만 추출
+      const match = raw.match(/\[.*\]/s);
+      if (match) {
+        const arr = JSON.parse(match[0]);
         if (Array.isArray(arr)) return arr.map(String);
       }
     } catch {
-      // fallback 아래에서 처리
+      // 무시하고 fallback으로
     }
 
-    // 쉼표 기반 파싱 fallback
+    // 쉼표 기반 파싱
     if (raw.includes(",")) {
       return raw
         .split(",")
@@ -127,25 +129,9 @@ export class GptService {
         .filter(Boolean);
     }
 
-    // 단일 키워드 fallback
-    const only = raw
-      .replace(/^\[|\]$/g, "")
-      .trim()
-      .replace(/^"|"$/g, "");
+    // 단일 키워드
+    const only = raw.replace(/^\[|\]$/g, "").trim().replace(/^"|"$/g, "");
     return only ? [only] : [];
-  }
-
-  private simpleFallbackExtract(sentence: string): string[] {
-    const tokens = sentence
-      .split(/[\s,.;:"'()\-!?]+/)
-      .map((w) => w.trim())
-      .filter(Boolean);
-
-    const kor = tokens.filter((w) => /^[가-힣]{2,}$/.test(w));
-    const eng = tokens.filter((w) => /^[A-Za-z]{3,}$/.test(w));
-    const merged = [...kor, ...eng];
-
-    return this.normalizeKeywordList(merged).slice(0, this.MAX_RETURN);
   }
 
   private normalizeKeywordList(arr: unknown[]): string[] {
