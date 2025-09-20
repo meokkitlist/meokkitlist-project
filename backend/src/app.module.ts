@@ -5,7 +5,6 @@ import { HttpModule } from '@nestjs/axios';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisModule, RedisModuleOptions } from '@nestjs-modules/ioredis';
-// 캐시 스토어: v1 계열은 default export 형태라 as any 캐스팅이 필요할 수 있음
 import * as redisStore from 'cache-manager-ioredis';
 
 import { AppController } from './app.controller';
@@ -47,12 +46,12 @@ import { RestaurantService } from './services/restaurant.service';
 import { Review } from './entities/review.entity';
 import { Restaurant } from './entities/restaurant.entity';
 
-// ✅ 인증 모듈 추가
+// ✅ 인증 모듈
 import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
-    // 1) .env 로드 (전역)
+    // 1) .env 로드
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -60,24 +59,19 @@ import { AuthModule } from './auth/auth.module';
     // 2) HTTP 모듈
     HttpModule,
 
-    // 3) DB 연결 (env 기반)
+    // 3) DB 연결 (PostgreSQL 우선)
     TypeOrmModule.forRoot({
-      type: (process.env.DB_TYPE as any) || 'sqlite',
-      database: process.env.DB_PATH || 'meokkitlist.sqlite',
+      type: (process.env.DB_TYPE as any) || 'postgres',
+      url: process.env.DATABASE_URL,
       entities: [Review, Restaurant],
-      synchronize:
-        process.env.NODE_ENV === 'development' ||
-        process.env.NODE_ENV === 'dev' ||
-        process.env.NODE_ENV === undefined
-          ? true
-          : false,
       autoLoadEntities: true,
+      synchronize: true, // ⚠️ 개발/졸과 시연용으로 true, 운영에서는 migration 권장
     }),
 
     // 4) 엔티티 레포지토리 등록
     TypeOrmModule.forFeature([Review, Restaurant]),
 
-    // 5) 전역 캐시 (Redis backend)
+    // 5) 전역 캐시 (Redis)
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: async () => ({
@@ -85,11 +79,11 @@ import { AuthModule } from './auth/auth.module';
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
         password: process.env.REDIS_PASSWORD || undefined,
-        ttl: 60 * 60, // seconds (1시간)
+        ttl: 60 * 60,
       }),
     }),
 
-    // 6) Redis 클라이언트 (pub/sub, direct 사용 시)
+    // 6) Redis 클라이언트
     RedisModule.forRootAsync({
       useFactory: async (): Promise<RedisModuleOptions> => ({
         type: 'single',
@@ -116,7 +110,7 @@ import { AuthModule } from './auth/auth.module';
     GptController,
     KeywordController,
     RedisController,
-    RestaurantController, // ✅ 추가
+    RestaurantController,
   ],
 
   providers: [
