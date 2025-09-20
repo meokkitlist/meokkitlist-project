@@ -49,6 +49,9 @@ export class Restaurant {
   @Column("text", { nullable: true })
   review: string | null;
 
+  @Column({ type: "float", default: 0, nullable: false })
+  sentiment_score: number;
+
   @OneToMany(() => Review, (review) => review.restaurant, { cascade: false })
   reviews: Review[];
 }
