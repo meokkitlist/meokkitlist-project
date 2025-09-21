@@ -156,19 +156,20 @@ export class ReviewController {
       throw new BadRequestException("파일 업로드 실패");
     }
 
-    // ========== 파일명 파싱 로직 ==========
-    const filename = (file.originalname || "").normalize("NFC");
+    // ========== 파일명 파싱 (한글 안전 디코딩) ==========
+    const rawFilename = file.originalname || "";
+    const safeFilename = Buffer.from(rawFilename, "latin1").toString("utf8");
+    this.logger.log(`📂 업로드된 파일명: ${safeFilename}`);
 
-    // 허용 패턴: 1) YYYY-MM-DD  2) YYYYMMDD  3) 날짜 없음
     const patterns = [
-      /^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/i,
-      /^리뷰_(.+?)_\d{8}\.csv$/i,
-      /^리뷰_(.+?)\.csv$/i,
+      /^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/i, // 리뷰_가게이름_2025-09-21.csv
+      /^리뷰_(.+?)_\d{8}\.csv$/i, // 리뷰_가게이름_20250921.csv
+      /^리뷰_(.+?)\.csv$/i, // 리뷰_가게이름.csv
     ];
 
     let storeName: string | null = null;
     for (const re of patterns) {
-      const m = filename.match(re);
+      const m = safeFilename.match(re);
       if (m) {
         storeName = m[1].trim();
         break;
