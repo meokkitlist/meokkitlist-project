@@ -4,11 +4,14 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
 
-function parseOrigins(): string[] {
+function parseOrigins(): string[] | true {
   const raw = process.env.CORS_ORIGIN?.trim();
   if (!raw) {
-    // 기본값: 개발용 localhost만 허용
-    return ['http://localhost:3000', 'http://localhost:3001'];
+    // 개발 편의: 전부 허용 (*)
+    return true;
+  }
+  if (raw === '*') {
+    return true;
   }
   return raw.split(',').map((s) => s.trim());
 }
@@ -17,10 +20,10 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // 1) Cookie 파서 (JWT HttpOnly 쿠키 인증 지원)
+  // 1) Cookie 파서
   app.use(cookieParser());
 
-  // 2) 글로벌 ValidationPipe (DTO 유효성 검사)
+  // 2) 글로벌 ValidationPipe
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -29,7 +32,7 @@ async function bootstrap() {
     }),
   );
 
-  // 3) CORS 설정 (환경변수 기반)
+  // 3) CORS 설정
   const origins = parseOrigins();
   app.enableCors({
     origin: origins,
@@ -61,7 +64,9 @@ async function bootstrap() {
 
   logger.log(`🚀 Server is running on http://localhost:${PORT}`);
   logger.log(`📘 Swagger docs at http://localhost:${PORT}/api-docs`);
-  logger.log(`🔐 CORS origins: ${origins.join(', ')}`);
+  logger.log(
+    `🔐 CORS origins: ${origins === true ? '*' : origins.join(', ')}`
+  );
 }
 
 bootstrap();

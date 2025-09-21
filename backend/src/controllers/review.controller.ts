@@ -12,7 +12,7 @@ import csv from "csv-parser";
 import * as fs from "fs";
 import * as path from "path";
 import { diskStorage } from "multer";
-import { Express } from "express"; // ✅ 수정 (type import 대신 일반 import)
+import { Express } from "express";
 import {
   ApiBody,
   ApiConsumes,
@@ -151,20 +151,36 @@ export class ReviewController {
       },
     },
   })
-  async uploadCsv(@UploadedFile() file: Express.Multer.File) { // ✅ 타입 확실히 지정
+  async uploadCsv(@UploadedFile() file: Express.Multer.File) {
     if (!file?.path) {
       throw new BadRequestException("파일 업로드 실패");
     }
 
-    const rawFilename = file.originalname;
-    const decodedFilename = decodeURIComponent(escape(rawFilename));
-    const filename = path.basename(decodedFilename);
+    // ========== 파일명 파싱 로직 ==========
+    const filename = (file.originalname || "").normalize("NFC");
 
-    const match = filename.match(/^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/);
-    const storeName = match ? match[1] : null;
+    // 허용 패턴:
+    // 1) 리뷰_가게이름_2025-09-21.csv
+    // 2) 리뷰_가게이름_20250921.csv
+    // 3) 리뷰_가게이름.csv (날짜 없는 경우도 허용)
+    const patterns = [
+      /^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/i,
+      /^리뷰_(.+?)_\d{8}\.csv$/i,
+      /^리뷰_(.+?)\.csv$/i,
+    ];
+
+    let storeName: string | null = null;
+    for (const re of patterns) {
+      const m = filename.match(re);
+      if (m) {
+        storeName = m[1].trim();
+        break;
+      }
+    }
+
     if (!storeName) {
       throw new BadRequestException(
-        "파일명에서 가게이름을 추출할 수 없습니다. (예: 리뷰_가게이름_날짜.csv)",
+        '파일명 규칙을 확인해주세요. 예: "리뷰_가게이름_2025-09-21.csv", "리뷰_가게이름_20250921.csv", "리뷰_가게이름.csv"',
       );
     }
 
@@ -175,8 +191,9 @@ export class ReviewController {
       );
     }
     const restaurantId = String(restaurant.id);
-    this.logger.log("✅ 매칭된 restaurant_id:", restaurantId);
+    this.logger.log(`✅ 매칭된 restaurant: ${storeName} (id=${restaurantId})`);
 
+    // ========== CSV 파싱 및 저장 ==========
     const results: Record<string, string>[] = [];
     try {
       await new Promise<void>((resolve, reject) => {
