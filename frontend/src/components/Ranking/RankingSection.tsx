@@ -5,6 +5,19 @@ import { IconImg } from '@/components/common/IconImg'
 import { keyframes } from '@emotion/react'
 import { useEffect, useRef, useState } from 'react'
 
+export interface SentimentResult {
+  sentiment: string
+  score: number
+  emoji: string
+  percent: number
+  raw: {
+    top_label: string
+    top_prob: number
+    keywords?: string[]
+    ui?: { emoji: string; percent: number }
+  }
+}
+
 interface Props {
   items: RankingItem[]
   loading?: boolean
@@ -78,6 +91,22 @@ export function RankingSection({ items, loading, keyword, userId }: Props) {
   )
 }
 
+function toKo(en: string): {
+  ko: string
+  tone: 'vpos' | 'pos' | 'neu' | 'neg' | 'vneg' | 'unk' | 'err'
+} {
+  const s = (en || '').toLowerCase()
+  if (s.includes('very') && s.includes('positive'))
+    return { ko: '매우 긍정', tone: 'vpos' }
+  if (s.includes('positive')) return { ko: '긍정', tone: 'pos' }
+  if (s.includes('neutral')) return { ko: '중립', tone: 'neu' }
+  if (s.includes('very') && s.includes('negative'))
+    return { ko: '매우 부정', tone: 'vneg' }
+  if (s.includes('negative')) return { ko: '부정', tone: 'neg' }
+  if (s.includes('error')) return { ko: '오류', tone: 'err' }
+  return { ko: '알 수 없음', tone: 'unk' }
+}
+
 function LazyRankRow({
   item,
   index,
@@ -93,7 +122,60 @@ function LazyRankRow({
   const [submitting, setSubmitting] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [btnHover, setBtnHover] = useState(false)
+
+  const [senti, setSenti] = useState<SentimentResult | null>(null)
+  const [sentiLoading, setSentiLoading] = useState(false)
+  const [sentiErr, setSentiErr] = useState<string | null>(null)
+  const debTimer = useRef<number | null>(null)
+  const reqAbort = useRef<AbortController | null>(null)
+
   const restaurantId = (item as any).restaurant_id ?? (item as any).id ?? null
+
+  useEffect(() => {
+    if (!open) return
+    const t = text.trim()
+    if (debTimer.current) window.clearTimeout(debTimer.current)
+    if (t.length < 5 || !restaurantId || !userId) {
+      setSenti(null)
+      setSentiErr(null)
+      setSentiLoading(false)
+      return
+    }
+    debTimer.current = window.setTimeout(async () => {
+      try {
+        setSentiLoading(true)
+        setSentiErr(null)
+        if (reqAbort.current) reqAbort.current.abort()
+        reqAbort.current = new AbortController()
+        const res = await fetch(urlJoin('/sentiment/test'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          signal: reqAbort.current.signal,
+          body: JSON.stringify({
+            text: t,
+            restaurant_id: String(restaurantId),
+            source: 'user',
+            user_id: userId,
+          }),
+        })
+        if (!res.ok)
+          throw new Error(await res.text().catch(() => '감성 분석 실패'))
+        const data = (await res.json()) as SentimentResult
+        setSenti(data)
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') {
+          setSentiErr(e?.message || '분석 오류')
+          setSenti(null)
+        }
+      } finally {
+        setSentiLoading(false)
+      }
+    }, 500) as unknown as number
+    return () => {
+      if (debTimer.current) window.clearTimeout(debTimer.current)
+    }
+  }, [text, open, restaurantId, userId])
 
   async function submitReview() {
     setMsg(null)
@@ -158,7 +240,7 @@ function LazyRankRow({
                 <Dot>·</Dot>
                 <span>총점 {item.totalScore.toFixed(1)}</span>
               </Meta>
-              <Preview>“{item.reviewPreview}”</Preview>
+              <Preview>{item.preview || ''}</Preview>
               <Keywords>
                 {item.relatedKeyword.map((k, i) => (
                   <Keyword key={i}>#{k}</Keyword>
@@ -185,11 +267,29 @@ function LazyRankRow({
               {userId ? (
                 <ReviewBox>
                   <ReviewHeader>
-                    <span>
-                      {' '}
+                    <Title>
                       <IconImg src="/icons/review.png" alt="리뷰" />
                       {userId} 님의 리뷰
-                    </span>
+                    </Title>
+                    {sentiLoading && <BadgeNeutral>분석 중…</BadgeNeutral>}
+                    {!sentiLoading &&
+                      senti &&
+                      (() => {
+                        const { ko, tone } = toKo(senti.sentiment)
+                        return (
+                          <SentimentBadge data-tone={tone}>
+                            <span className="emoji">{senti.emoji || '🔍'}</span>
+                            <span className="label">{ko}</span>
+                            <span className="percent">{senti.percent}%</span>
+                          </SentimentBadge>
+                        )
+                      })()}
+                    {!sentiLoading &&
+                      !senti &&
+                      text.trim().length >= 5 &&
+                      sentiErr && (
+                        <BadgeError title={sentiErr}>분석 오류</BadgeError>
+                      )}
                   </ReviewHeader>
                   <ReviewTextarea
                     placeholder="이 식당에 대한 후기를 남겨주세요 (5자 이상)"
@@ -329,7 +429,10 @@ const Row = styled.div`
 
 const Left = styled.div`
   display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 0.25rem;
+  overflow: hidden;
 `
 
 const RankNo = styled.span`
@@ -354,8 +457,32 @@ const Dot = styled.span`
 `
 
 const Preview = styled.div`
+  position: relative;
   color: #475467;
   font-size: 0.92rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
+  &::before {
+    content: '“';
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  &::after {
+    content: '”';
+    position: absolute;
+    right: 0.2rem;
+    bottom: 0;
+    background: linear-gradient(to right, rgba(248, 249, 251, 0), #f8f9fb 60%);
+    padding-left: 0.2rem;
+  }
 `
 
 const Keywords = styled.div`
@@ -380,8 +507,10 @@ const Hint = styled.div`
 `
 
 const Right = styled.div`
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
+  margin-left: auto;
 `
 
 const OpenBtn = styled.button`
@@ -392,6 +521,7 @@ const OpenBtn = styled.button`
   border-radius: 6px;
   font-size: 1rem;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background-color 0.15s ease,
     color 0.15s ease,
@@ -412,12 +542,50 @@ const ReviewBox = styled.div`
   padding: 0.6rem;
   display: grid;
   gap: 0.45rem;
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 `
 
 const ReviewHeader = styled.div`
   font-size: 0.9rem;
   color: #475467;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 `
+
+const Title = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+`
+
+const SentimentBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  line-height: 1;
+  background: transparent;
+  color: #374151;
+  .emoji {
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .sep {
+    color: #9ca3af;
+  }
+`
+
+const BadgeNeutral = styled(SentimentBadge)``
+const BadgeError = styled(SentimentBadge)``
 
 const ReviewTextarea = styled.textarea`
   width: 100%;

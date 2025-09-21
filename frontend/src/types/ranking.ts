@@ -14,5 +14,5 @@ export type RankingItem = {
   naverScore: number | null
   coordinates: { lat: number | null; lon: number | null }
   distanceKm?: number | null
-  reviewPreview?: string
+  preview?: string
 }

@@ -148,9 +148,6 @@ export function KakaoMap({
         <div style="padding:8px;min-width:200px;">
           <div style="font-weight:600;margin-bottom:4px;">${p.rank}위 · ${p.marketName}</div>
           <div style="font-size:12px;color:#555;">${p.marketAddress}</div>
-          <a href="${p.marketUrl}" target="_blank" style="display:inline-block;margin-top:6px;font-size:12px;text-decoration:underline;">
-            지도에서 보기
-          </a>
         </div>`
           infoWindowRef.current.setContent(content)
           infoWindowRef.current.open(mapRef.current, marker)
