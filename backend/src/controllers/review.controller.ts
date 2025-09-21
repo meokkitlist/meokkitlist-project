@@ -159,10 +159,7 @@ export class ReviewController {
     // ========== 파일명 파싱 로직 ==========
     const filename = (file.originalname || "").normalize("NFC");
 
-    // 허용 패턴:
-    // 1) 리뷰_가게이름_2025-09-21.csv
-    // 2) 리뷰_가게이름_20250921.csv
-    // 3) 리뷰_가게이름.csv (날짜 없는 경우도 허용)
+    // 허용 패턴: 1) YYYY-MM-DD  2) YYYYMMDD  3) 날짜 없음
     const patterns = [
       /^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/i,
       /^리뷰_(.+?)_\d{8}\.csv$/i,
