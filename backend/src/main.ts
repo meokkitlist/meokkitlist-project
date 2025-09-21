@@ -7,13 +7,14 @@ import * as cookieParser from 'cookie-parser';
 function parseOrigins(): string[] | true {
   const raw = process.env.CORS_ORIGIN?.trim();
   if (!raw) {
-    // 개발 편의: 전부 허용 (*)
+    // 환경변수 없으면 개발 편의상 전부 허용
     return true;
   }
   if (raw === '*') {
+    // 와일드카드 → 전부 허용 (단, credentials:true와 함께 쓰면 안 됨)
     return true;
   }
-  return raw.split(',').map((s) => s.trim());
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 async function bootstrap() {
@@ -35,10 +36,19 @@ async function bootstrap() {
   // 3) CORS 설정
   const origins = parseOrigins();
   app.enableCors({
-    origin: origins,
+    origin: origins === true
+      ? true
+      : (origin, callback) => {
+          if (!origin) return callback(null, true); // Swagger or same-origin
+          if ((origins as string[]).includes(origin)) {
+            return callback(null, true);
+          }
+          return callback(null, false); // 허용 안 함
+        },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders:
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization',
     exposedHeaders: ['Set-Cookie'],
   });
 
@@ -47,10 +57,10 @@ async function bootstrap() {
     .setTitle('MeokkitList API')
     .setDescription('API documentation for MeokkitList project')
     .setVersion('1.0')
-    .addCookieAuth('token', {
+    .addCookieAuth('Authentication', {
       type: 'apiKey',
       in: 'cookie',
-      name: 'token',
+      name: 'Authentication',
       description: 'HttpOnly JWT token cookie (set by /auth/login)',
     })
     .build();
@@ -65,7 +75,7 @@ async function bootstrap() {
   logger.log(`🚀 Server is running on http://localhost:${PORT}`);
   logger.log(`📘 Swagger docs at http://localhost:${PORT}/api-docs`);
   logger.log(
-    `🔐 CORS origins: ${origins === true ? '*' : origins.join(', ')}`
+    `🔐 CORS origins: ${origins === true ? '*' : (origins as string[]).join(', ')}`
   );
 }
 
