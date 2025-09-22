@@ -6,7 +6,8 @@ import { Restaurant } from "../entities/restaurant.entity";
 import { SentimentResult, SentimentService } from "./sentiment.service";
 import { KeywordExtractionService } from "./keyword-extraction.service";
 
-import { parse } from "csv-parse/sync";
+import * as CSVParse from "csv-parse/sync";
+const { parse } = CSVParse;
 
 type ReviewSource = "user" | "crawl";
 
