@@ -8,10 +8,7 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import csv from "csv-parser";
-import * as fs from "fs";
-import * as path from "path";
-import { diskStorage } from "multer";
+import { memoryStorage } from "multer";
 import { Express } from "express";
 import {
   ApiBody,
@@ -24,6 +21,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { IsEnum, IsOptional, IsString } from "class-validator";
+import { parse } from "csv-parse/sync";
 
 import { ReviewService } from "../services/review.service";
 import { SentimentService } from "../services/sentiment.service";
@@ -66,15 +64,6 @@ export class ExpandKeywordDto {
   keyword!: string;
 }
 
-// ==============
-// Upload config
-// ==============
-const UPLOAD_DIR = path.join(process.cwd(), "uploads", "csv");
-
-function ensureDir(dir: string) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
 @ApiTags("Review")
 @Controller("review")
 export class ReviewController {
@@ -83,9 +72,7 @@ export class ReviewController {
     private readonly reviewService: ReviewService,
     private readonly sentimentService: SentimentService,
     private readonly restaurantService: RestaurantService,
-  ) {
-    ensureDir(UPLOAD_DIR);
-  }
+  ) {}
 
   @Post("create")
   @ApiOperation({ summary: "단일 리뷰 생성" })
@@ -105,17 +92,7 @@ export class ReviewController {
   @Post("upload-csv")
   @UseInterceptors(
     FileInterceptor("file", {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          ensureDir(UPLOAD_DIR);
-          cb(null, UPLOAD_DIR);
-        },
-        filename: (_req, file, cb) => {
-          const ts = Date.now();
-          const ext = path.extname(file.originalname) || ".csv";
-          cb(null, `review_${ts}${ext}`);
-        },
-      }),
+      storage: memoryStorage(), // ✅ 디스크 대신 메모리 저장
       fileFilter: (_req, file, cb) => {
         const ok =
           file.mimetype === "text/csv" ||
@@ -125,7 +102,7 @@ export class ReviewController {
           ok,
         );
       },
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB 제한
     }),
   )
   @ApiOperation({ summary: "CSV 업로드(리뷰 배치 저장)" })
@@ -152,14 +129,16 @@ export class ReviewController {
     },
   })
   async uploadCsv(@UploadedFile() file: Express.Multer.File) {
-    if (!file?.path) {
-      throw new BadRequestException("파일 업로드 실패");
+    if (!file?.buffer) {
+      throw new BadRequestException("파일 업로드 실패: buffer가 비어있습니다.");
     }
 
     // ========== 파일명 파싱 (한글 안전 디코딩) ==========
     const rawFilename = file.originalname || "";
     const safeFilename = Buffer.from(rawFilename, "latin1").toString("utf8");
-    this.logger.log(`📂 업로드된 파일명: ${safeFilename}`);
+    this.logger.log(
+      `📂 업로드된 파일명: ${safeFilename}, size=${file.buffer.length}`,
+    );
 
     const patterns = [
       /^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/i, // 리뷰_가게이름_2025-09-21.csv
@@ -192,73 +171,58 @@ export class ReviewController {
     this.logger.log(`✅ 매칭된 restaurant: ${storeName} (id=${restaurantId})`);
 
     // ========== CSV 파싱 및 저장 ==========
-    const results: Record<string, string>[] = [];
+    let rows: { review: string }[] = [];
     try {
-      await new Promise<void>((resolve, reject) => {
-        fs.createReadStream(file.path, { encoding: "utf8" })
-          .pipe(
-            csv({
-              headers: ["review"],
-              separator: ",",
-              mapHeaders: ({ header }) => header.trim(),
-              mapValues: ({ value }) => value?.trim(),
-            }),
-          )
-          .on("data", (row: Record<string, string>) => {
-            if (row.review && row.review.length > 0) {
-              results.push({ review: row.review });
-            }
-          })
-          .on("end", () => resolve())
-          .on("error", (err: Error) => reject(err));
+      rows = parse(file.buffer, {
+        columns: true,
+        bom: true,
+        trim: true,
+        skip_empty_lines: true,
       });
-
-      let successCount = 0;
-      let failCount = 0;
-      const savedReviews: any[] = [];
-      const failedReviews: { review: string; error: string }[] = [];
-
-      this.logger.log(`📊 총 ${results.length}개의 리뷰를 파싱했습니다.`);
-      for (const row of results) {
-        try {
-          const res = await this.reviewService.createReview({
-            text: row.review,
-            restaurant_id: restaurantId,
-            user_id: undefined,
-            source: ReviewSource.CRAWL,
-          });
-          savedReviews.push(res.data);
-          successCount++;
-        } catch (err: any) {
-          this.logger.warn(
-            `❌ 리뷰 저장 실패: "${row.review}"\n에러: ${err?.message ?? err}`,
-          );
-          failedReviews.push({
-            review: row.review,
-            error: err?.message ?? String(err),
-          });
-          failCount++;
-        }
-      }
-
-      return {
-        message: "CSV 업로드 및 저장 완료",
-        total: results.length,
-        success: successCount,
-        failed: failCount,
-        savedReviews,
-        failedReviews,
-      };
     } catch (error: any) {
       throw new BadRequestException(
-        `CSV 파싱 오류: ${error?.message ?? error}`,
+        `CSV 파싱 오류: ${error?.message ?? String(error)}`,
       );
-    } finally {
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+    const savedReviews: any[] = [];
+    const failedReviews: { review: string; error: string }[] = [];
+
+    this.logger.log(`📊 총 ${rows.length}개의 리뷰를 파싱했습니다.`);
+
+    for (const row of rows) {
+      if (!row.review || row.review.length === 0) continue;
+
       try {
-        await fs.promises.unlink(file.path);
-      } catch {
-        /* ignore */
+        const res = await this.reviewService.createReview({
+          text: row.review,
+          restaurant_id: restaurantId,
+          user_id: undefined,
+          source: ReviewSource.CRAWL,
+        });
+        savedReviews.push(res.data);
+        successCount++;
+      } catch (err: any) {
+        this.logger.warn(
+          `❌ 리뷰 저장 실패: "${row.review}"\n에러: ${err?.message ?? err}`,
+        );
+        failedReviews.push({
+          review: row.review,
+          error: err?.message ?? String(err),
+        });
+        failCount++;
       }
     }
+
+    return {
+      message: "CSV 업로드 및 저장 완료",
+      total: rows.length,
+      success: successCount,
+      failed: failCount,
+      savedReviews,
+      failedReviews,
+    };
   }
 }
