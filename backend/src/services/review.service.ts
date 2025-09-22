@@ -7,7 +7,6 @@ import { SentimentResult, SentimentService } from "./sentiment.service";
 import { KeywordExtractionService } from "./keyword-extraction.service";
 
 import { parse } from "csv-parse/sync";
-import * as fs from "fs";
 
 type ReviewSource = "user" | "crawl";
 
@@ -77,23 +76,14 @@ export class ReviewService {
   }
 
   async uploadCsv(file: Express.Multer.File, preMatchedRestaurantId?: number) {
-    if (!file) throw new BadRequestException("CSV 파일이 없습니다.");
-
-    // ✅ 파일 로딩: buffer 우선, path fallback
-    let buf: Buffer | null = null;
-
-    if (file.buffer) {
-      buf = file.buffer;
-    } else if (file.path && fs.existsSync(file.path)) {
-      buf = fs.readFileSync(file.path);
-    } else {
-      throw new BadRequestException("CSV 파일을 불러올 수 없습니다. file.buffer와 file.path가 모두 존재하지 않음");
+    if (!file || !file.buffer) {
+      throw new BadRequestException("CSV 파일이 없거나 메모리 업로드 형식이 아닙니다.");
     }
 
     // ✅ CSV 파싱
     let rows: any[];
     try {
-      rows = parse(buf, {
+      rows = parse(file.buffer, {
         columns: true,
         bom: true,
         trim: true,
@@ -102,8 +92,6 @@ export class ReviewService {
     } catch (e: any) {
       this.logger.error("CSV 파싱 실패", e?.stack ?? e);
       throw new BadRequestException(`CSV 파싱 오류: ${e?.message ?? e}`);
-    } finally {
-      if (file.path) fs.promises.unlink(file.path).catch(() => {});
     }
 
     if (!Array.isArray(rows) || rows.length === 0) {
