@@ -1,14 +1,11 @@
-// src/services/review.service.ts
 import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-
 import { Review } from "../entities/review.entity";
 import { Restaurant } from "../entities/restaurant.entity";
 import { SentimentResult, SentimentService } from "./sentiment.service";
 import { KeywordExtractionService } from "./keyword-extraction.service";
 
-// CSV 동기 파서
 import { parse } from "csv-parse/sync";
 import * as fs from "fs";
 
@@ -36,7 +33,6 @@ export class ReviewService {
     private readonly restaurantRepo: Repository<Restaurant>,
   ) {}
 
-  /** ---------- 단건 생성 (기존 API) ---------- */
   async createReview(dto: CreateReviewDto) {
     const { text, restaurant_id, user_id, source } = dto;
     const restaurantId = Number(restaurant_id);
@@ -49,13 +45,11 @@ export class ReviewService {
     if (source !== "user" && source !== "crawl")
       throw new BadRequestException("source는 'user' 또는 'crawl'이어야 합니다.");
 
-    // 감성분석 (실패해도 저장은 진행하도록 설계 가능)
     let sentimentResult: SentimentResult | null = null;
     try {
       sentimentResult = await this.sentimentService.analyze(text, String(restaurantId), source, user_id);
     } catch (error) {
       this.logger.error("❌ 감성 분석 중 오류:", error);
-      // 실패 시 저장은 진행하고, 결과 필드만 비워둠
     }
 
     const review = this.reviewRepo.create({
@@ -72,7 +66,6 @@ export class ReviewService {
 
     const savedReview = await this.reviewRepo.save(review);
 
-    // 리뷰 저장 후 키워드 추출/맵 최신화 (실패해도 서비스 계속)
     try {
       await this.keywordExtractionService.runExtractorScript(restaurantId);
       this.logger.log(`✅ 키워드 추출 및 Map 최신화 완료 (restaurant_id=${restaurantId})`);
@@ -83,15 +76,21 @@ export class ReviewService {
     return { message: "리뷰 분석 및 저장 완료", data: savedReview };
   }
 
-  /** ---------- CSV 업로드 (파일 한 번에 파싱) ---------- */
-  // 컨트롤러에서 파일과 (선택)사전 매칭된 restaurantId를 넘겨줄 수 있도록 설계
   async uploadCsv(file: Express.Multer.File, preMatchedRestaurantId?: number) {
     if (!file) throw new BadRequestException("CSV 파일이 없습니다.");
 
-    // 버퍼 또는 경로로 읽기
-    const buf = file.buffer ?? fs.readFileSync(file.path);
+    // ✅ 파일 로딩: buffer 우선, path fallback
+    let buf: Buffer | null = null;
 
-    // CSV 파싱 (BOM/trim/헤더 사용)
+    if (file.buffer) {
+      buf = file.buffer;
+    } else if (file.path && fs.existsSync(file.path)) {
+      buf = fs.readFileSync(file.path);
+    } else {
+      throw new BadRequestException("CSV 파일을 불러올 수 없습니다. file.buffer와 file.path가 모두 존재하지 않음");
+    }
+
+    // ✅ CSV 파싱
     let rows: any[];
     try {
       rows = parse(buf, {
@@ -104,7 +103,6 @@ export class ReviewService {
       this.logger.error("CSV 파싱 실패", e?.stack ?? e);
       throw new BadRequestException(`CSV 파싱 오류: ${e?.message ?? e}`);
     } finally {
-      // 업로드 임시 파일 정리
       if (file.path) fs.promises.unlink(file.path).catch(() => {});
     }
 
@@ -112,8 +110,7 @@ export class ReviewService {
       return { inserted: 0, analyzed: 0, skipped: 0, errors: [] as string[] };
     }
 
-    const normalize = (s?: string) =>
-      (s ?? "").normalize("NFC").replace(/\u200B/g, "").trim();
+    const normalize = (s?: string) => (s ?? "").normalize("NFC").replace(/\u200B/g, "").trim();
     const noSpaceLower = (s?: string) => normalize(s).replace(/\s+/g, "").toLowerCase();
 
     const findRestaurantByName = async (rawName: string) => {
@@ -122,7 +119,6 @@ export class ReviewService {
       const nLower = n.toLowerCase();
       const nsLower = noSpaceLower(n);
 
-      // 완전일치 or 공백제거일치
       const exact = await this.restaurantRepo
         .createQueryBuilder("r")
         .where("LOWER(r.name) = :n", { n: nLower })
@@ -130,7 +126,6 @@ export class ReviewService {
         .getOne();
       if (exact) return exact;
 
-      // 부분일치 후보 1건만 자동 선택
       const candidates = await this.restaurantRepo
         .createQueryBuilder("r")
         .where("LOWER(r.name) LIKE :kw OR REPLACE(LOWER(r.name), ' ', '') LIKE :kw2", {
@@ -152,7 +147,6 @@ export class ReviewService {
 
     for (const [idx, row] of rows.entries()) {
       try {
-        // 1) 텍스트/소스 추출
         const text: string =
           row.text ?? row["리뷰"] ?? row["내용"] ?? row["comment"] ?? row["text"] ?? "";
         const source: ReviewSource =
@@ -167,28 +161,21 @@ export class ReviewService {
           throw new BadRequestException(`Row ${idx + 1}: source는 'user' | 'crawl'이어야 합니다.`);
         }
 
-        // 2) restaurantId 결정
         let restaurantId: number | undefined =
-          preMatchedRestaurantId ??
-          Number(row.restaurant_id ?? row["restaurantId"]);
+          preMatchedRestaurantId ?? Number(row.restaurant_id ?? row["restaurantId"]);
 
         if (!restaurantId || !Number.isFinite(restaurantId) || restaurantId <= 0) {
           const byName = row["가게이름"] ?? row["restaurant_name"] ?? row["name"];
           if (!byName) {
-            throw new BadRequestException(
-              `Row ${idx + 1}: restaurant_id 또는 가게이름 컬럼이 필요합니다.`,
-            );
+            throw new BadRequestException(`Row ${idx + 1}: restaurant_id 또는 가게이름 컬럼이 필요합니다.`);
           }
           const found = await findRestaurantByName(String(byName));
           if (!found) {
-            throw new BadRequestException(
-              `Row ${idx + 1}: 가게이름 '${byName}'에 해당하는 레스토랑을 찾을 수 없습니다.`,
-            );
+            throw new BadRequestException(`Row ${idx + 1}: 가게이름 '${byName}'에 해당하는 레스토랑을 찾을 수 없습니다.`);
           }
           restaurantId = found.id;
         }
 
-        // 3) 감성분석 (실패해도 저장은 진행)
         let s: SentimentResult | null = null;
         try {
           s = await this.sentimentService.analyze(text, String(restaurantId), source, user_id);
@@ -197,7 +184,6 @@ export class ReviewService {
           this.logger.warn(`Row ${idx + 1}: 감성분석 실패 → 저장은 계속 진행`, e as any);
         }
 
-        // 4) 저장
         await this.reviewRepo.save({
           text,
           restaurant_id: restaurantId,
@@ -217,12 +203,10 @@ export class ReviewService {
       }
     }
 
-    // 5) 키워드 맵 최신화 (레스토랑별 1회)
     for (const rid of touchedRestaurantIds) {
       try {
         await this.keywordExtractionService.runExtractorScript(rid);
       } catch {
-        // 무시 (로그만)
         this.logger.warn(`키워드 추출 실패 (restaurant_id=${rid})`);
       }
     }
