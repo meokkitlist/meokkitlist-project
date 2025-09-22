@@ -1,4 +1,3 @@
-// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
@@ -51,27 +50,19 @@ import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
-    // 1) .env 로드
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-
-    // 2) HTTP 모듈
+    ConfigModule.forRoot({ isGlobal: true }),
     HttpModule,
 
-    // 3) DB 연결 (PostgreSQL)
     TypeOrmModule.forRoot({
-      type: 'postgres', // Render PostgreSQL
+      type: 'postgres',
       url: process.env.DATABASE_URL?.replace('postgresql://', 'postgres://'),
       entities: [Review, Restaurant],
       autoLoadEntities: true,
-      synchronize: true, // ⚠️ 개발/시연용 → 운영은 false + migration
+      synchronize: true, // 운영시 false 권장
     }),
 
-    // 4) 엔티티 레포지토리 등록
     TypeOrmModule.forFeature([Review, Restaurant]),
 
-    // 5) 전역 캐시 (Redis)
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: async () => ({
@@ -79,11 +70,10 @@ import { AuthModule } from './auth/auth.module';
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
         password: process.env.REDIS_PASSWORD || undefined,
-        ttl: 60 * 60, // 1시간
+        ttl: 60 * 60,
       }),
     }),
 
-    // 6) Redis 클라이언트
     RedisModule.forRootAsync({
       useFactory: async (): Promise<RedisModuleOptions> => ({
         type: 'single',
@@ -97,7 +87,6 @@ import { AuthModule } from './auth/auth.module';
       }),
     }),
 
-    // 7) 인증 모듈
     AuthModule,
   ],
 
