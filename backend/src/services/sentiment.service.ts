@@ -22,6 +22,11 @@ export interface SentimentResult {
 export class SentimentService {
   constructor(private readonly httpService: HttpService) {}
 
+  private get apiUrl(): string {
+    // ✅ 환경변수에서 가져오고, 없으면 로컬 기본값 사용
+    return process.env.SENTIMENT_API_URL ?? 'http://localhost:8001';
+  }
+
   // ✅ 감성 분석 요청
   async analyze(
     text: string,
@@ -31,7 +36,7 @@ export class SentimentService {
   ): Promise<SentimentResult> {
     try {
       const response = await this.httpService.axiosRef.post(
-        'http://localhost:8001/analyze',
+        `${this.apiUrl}/analyze`,
         {
           text,
           restaurant_id: restaurantId,
@@ -91,7 +96,7 @@ export class SentimentService {
   async expandKeywords(keyword: string): Promise<string[]> {
     try {
       const response = await this.httpService.axiosRef.post(
-        'http://localhost:8001/expand_keywords',
+        `${this.apiUrl}/expand_keywords`,
         { keyword },
         { headers: { 'Content-Type': 'application/json' } }
       );
