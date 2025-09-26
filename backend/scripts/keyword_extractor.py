@@ -1,28 +1,32 @@
-# backend/scripts/keyword_extractor.py
-
-import sqlite3
+import os
+import json
 import pandas as pd
+from sqlalchemy import create_engine, text
 from konlpy.tag import Okt
 from sklearn.feature_extraction.text import TfidfVectorizer
-import json
-import os
+from dotenv import load_dotenv
 
-# 📌 너의 SQLite DB 파일 경로
-# NestJS에서 TypeORM으로 SQLite 사용 중이면 .env에서 DB 경로 확인
-# 예: src/data/dev.sqlite 라면 아래처럼 적절히 수정
-DB_PATH = os.path.join(os.path.dirname(__file__), '../meokkitlist.sqlite')  # ← 이거 경로 꼭 확인!
+# 📌 .env 로드
+load_dotenv()
 
+# 📌 PostgreSQL 연결 (env에서 DATABASE_URL 사용)
+DATABASE_URL = os.getenv("DATABASE_URL")
+assert DATABASE_URL, "❗ DATABASE_URL이 .env에 설정되어 있지 않습니다."
+
+# SQLAlchemy 엔진 생성
+engine = create_engine(DATABASE_URL)
+
+# ✅ 리뷰 + 레스토랑 JOIN 조회
 def fetch_reviews():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("""
-    SELECT r.id AS restaurant_id, r.name, r.keywords, rv.text
-    FROM restaurant r
-    LEFT JOIN review rv ON r.id = rv.restaurant_id
-""", conn)
-
-    conn.close()
+    query = """
+        SELECT r.id AS restaurant_id, r.name, r.keywords, rv.text
+        FROM restaurant r
+        LEFT JOIN review rv ON r.id = rv.restaurant_id
+    """
+    df = pd.read_sql_query(query, engine)
     return df
 
+# ✅ 키워드 추출 함수 (TF-IDF + Okt)
 def extract_keywords(texts, top_n=10):
     okt = Okt()
     docs = [" ".join(okt.nouns(str(t))) for t in texts if t]
@@ -36,6 +40,7 @@ def extract_keywords(texts, top_n=10):
         keywords.append(words)
     return keywords
 
+# ✅ 전체 키워드 추출 루프
 def run():
     df = fetch_reviews()
     grouped = df.groupby('restaurant_id')
@@ -46,6 +51,7 @@ def run():
 
         if not all_texts:
             continue
+
         top_keywords = extract_keywords([" ".join(all_texts)])
         results.append({
             "restaurant_id": rest_id,
@@ -54,39 +60,25 @@ def run():
 
     return results
 
+# ✅ DB에 키워드 저장
 def save_keywords_to_db(results):
-    conn = sqlite3.connect(DB_PATH)
-    for r in results:
-        kw_json = json.dumps(r['keywords'], ensure_ascii=False)
-        conn.execute(
-            "UPDATE restaurant SET keywords = ? WHERE id = ?",
-            (kw_json, r['restaurant_id'])
-        )
-    conn.commit()
-    conn.close()
+    with engine.begin() as conn:
+        for r in results:
+            kw_json = json.dumps(r['keywords'], ensure_ascii=False)
+            conn.execute(
+                text("UPDATE restaurant SET keywords = :kw WHERE id = :id"),
+                {"kw": kw_json, "id": r['restaurant_id']}
+            )
 
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1:
-        # ex) python keyword_extractor.py 3
-        rest_id = int(sys.argv[1])
-        rebuild_keywords_for_restaurant(rest_id)
-    else:
-        print("🔍 전체 키워드 추출 시작")
-        results = run()
-        save_keywords_to_db(results)
-        print("✅ 전체 키워드 추출 및 DB 저장 완료")
-
+# ✅ 특정 restaurant_id만 재추출
 def rebuild_keywords_for_restaurant(restaurant_id: int):
-    conn = sqlite3.connect(DB_PATH)
-
-    df = pd.read_sql_query(f"""
+    query = f"""
         SELECT r.id AS restaurant_id, r.name, r.keywords, rv.text
         FROM restaurant r
         LEFT JOIN review rv ON r.id = rv.restaurant_id
-        WHERE r.id = {restaurant_id}
-    """, conn)
+        WHERE r.id = :restaurant_id
+    """
+    df = pd.read_sql_query(query, engine, params={"restaurant_id": restaurant_id})
 
     if df.empty:
         print(f"❗ No restaurant found with id {restaurant_id}")
@@ -100,10 +92,24 @@ def rebuild_keywords_for_restaurant(restaurant_id: int):
     top_keywords = extract_keywords([" ".join(all_texts)])
     kw_json = json.dumps(top_keywords[0], ensure_ascii=False)
 
-    conn.execute(
-        "UPDATE restaurant SET keywords = ? WHERE id = ?",
-        (kw_json, restaurant_id)
-    )
-    conn.commit()
-    conn.close()
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE restaurant SET keywords = :kw WHERE id = :id"),
+            {"kw": kw_json, "id": restaurant_id}
+        )
+
     print(f"✅ 키워드 재추출 완료 for restaurant_id={restaurant_id}")
+
+# ✅ 진입점
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1:
+        # ex) python keyword_extractor.py 3
+        rest_id = int(sys.argv[1])
+        rebuild_keywords_for_restaurant(rest_id)
+    else:
+        print("🔍 전체 키워드 추출 시작")
+        results = run()
+        save_keywords_to_db(results)
+        print("✅ 전체 키워드 추출 및 DB 저장 완료")
