@@ -50,7 +50,8 @@ export class GptService {
       prompt = [
         "다음 KEY목록 중에서 문장과 가장 연관된 키워드 1~5개를 고르시오.",
         "⚠️ 반드시 KEY목록 안에서만 골라야 한다.",
-        "⚠️ 반드시 JSON 배열 형식으로만 출력하라. (예: [\"짜장면\",\"중화요리\"])",
+        "⚠️ 반드시 JSON 배열 형식으로만 출력하라. 예시: [\"짜장면\", \"중화요리\"]",
+        "⚠️ 절대 설명이나 문장 없이 JSON 배열만 출력하라.",
         `KEY목록: ${JSON.stringify(keyList)}`,
         `문장: "${normalized}"`,
       ].join("\n");
@@ -96,7 +97,7 @@ export class GptService {
     // 4. 정규화 + 중복 제거
     keywords = this.normalizeKeywordList(keywords).slice(0, this.MAX_RETURN);
 
-    // 5. 캐시에 저장 (TTL 숫자로 전달)
+    // 5. 캐시에 저장
     try {
       await this.cacheManager.set(cacheKey, keywords, this.CACHE_TTL_SEC);
       this.logger.log(`✅ [SET] Cache 저장 완료: "${cacheKey}"`);
@@ -115,18 +116,24 @@ export class GptService {
       const match = raw.match(/\[.*\]/s);
       if (match) {
         const arr = JSON.parse(match[0]);
-        if (Array.isArray(arr)) return arr.map(String);
+        if (Array.isArray(arr)) {
+          const parsed = arr.map(String);
+          this.logger.debug(`✅ GPT 파싱 결과: ${JSON.stringify(parsed)}`);
+          return parsed;
+        }
       }
-    } catch {
-      // 무시하고 fallback으로
+    } catch (err) {
+      this.logger.warn(`⚠️ GPT 응답 JSON 파싱 실패: ${err}`);
     }
 
     // 쉼표 기반 파싱
     if (raw.includes(",")) {
-      return raw
+      const fallbackParsed = raw
         .split(",")
         .map((s) => s.trim().replace(/^"|"$/g, ""))
         .filter(Boolean);
+      this.logger.debug(`🔁 쉼표 기반 fallback 파싱 결과: ${JSON.stringify(fallbackParsed)}`);
+      return fallbackParsed;
     }
 
     // 단일 키워드
