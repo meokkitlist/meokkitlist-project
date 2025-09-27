@@ -1,3 +1,4 @@
+// src/controllers/review.controller.ts
 import {
   BadRequestException,
   Body,
@@ -6,10 +7,10 @@ import {
   Post,
   UploadedFile,
   UseInterceptors,
-} from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
-import { memoryStorage } from "multer";
-import { Express } from "express";
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { Express } from 'express';
 import {
   ApiBody,
   ApiConsumes,
@@ -19,39 +20,39 @@ import {
   ApiProperty,
   ApiPropertyOptional,
   ApiTags,
-} from "@nestjs/swagger";
-import { IsEnum, IsOptional, IsString } from "class-validator";
-import { parse } from "csv-parse/sync";
+} from '@nestjs/swagger';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { parse } from 'csv-parse/sync';
 
-import { ReviewService } from "../services/review.service";
-import { SentimentService } from "../services/sentiment.service";
-import { RestaurantService } from "../services/restaurant.service";
+import { ReviewService } from '../services/review.service';
+import { SentimentService } from '../services/sentiment.service';
+import { RestaurantService } from '../services/restaurant.service';
 
-// =====================
-// Swagger DTOs & Types
-// =====================
 export enum ReviewSource {
-  USER = "user",
-  CRAWL = "crawl",
+  USER = 'user',
+  CRAWL = 'crawl',
 }
 
 export class CreateReviewDto {
-  @ApiProperty({ description: "리뷰 텍스트", example: "맛있고 친절합니다." })
+  @ApiProperty({ description: '리뷰 텍스트', example: '맛있고 친절합니다.' })
   @IsString()
   text!: string;
 
-  @ApiProperty({ description: "가게 ID", example: "123" })
-  @IsString()
-  restaurant_id!: string;
+  @ApiPropertyOptional({
+    description: '가게 ID (없을 수도 있음)',
+    example: '123',
+  })
+  @IsOptional()
+  restaurant_id?: string | number;
 
-  @ApiPropertyOptional({ description: "작성자 사용자 ID", example: "u_42" })
+  @ApiPropertyOptional({ description: '작성자 사용자 ID', example: 'u_42' })
   @IsOptional()
   @IsString()
   user_id?: string;
 
   @ApiProperty({
     enum: ReviewSource,
-    description: "리뷰 소스",
+    description: '리뷰 소스',
     example: ReviewSource.CRAWL,
   })
   @IsEnum(ReviewSource)
@@ -59,13 +60,13 @@ export class CreateReviewDto {
 }
 
 export class ExpandKeywordDto {
-  @ApiProperty({ description: "기준 키워드", example: "분위기" })
+  @ApiProperty({ description: '기준 키워드', example: '분위기' })
   @IsString()
   keyword!: string;
 }
 
-@ApiTags("Review")
-@Controller("review")
+@ApiTags('Review')
+@Controller('review')
 export class ReviewController {
   private readonly logger = new Logger(ReviewController.name);
   constructor(
@@ -74,76 +75,75 @@ export class ReviewController {
     private readonly restaurantService: RestaurantService,
   ) {}
 
-  @Post("create")
-  @ApiOperation({ summary: "단일 리뷰 생성" })
-  @ApiCreatedResponse({ description: "리뷰 생성 성공" })
+  @Post('create')
+  @ApiOperation({ summary: '단일 리뷰 생성' })
+  @ApiCreatedResponse({ description: '리뷰 생성 성공' })
   async createReview(@Body() body: CreateReviewDto) {
     return this.reviewService.createReview(body);
   }
 
-  @Post("expand-keyword")
-  @ApiOperation({ summary: "키워드 확장" })
-  @ApiOkResponse({ description: "확장된 키워드 목록 반환" })
+  @Post('expand-keyword')
+  @ApiOperation({ summary: '키워드 확장' })
+  @ApiOkResponse({ description: '확장된 키워드 목록 반환' })
   async expandKeyword(@Body() body: ExpandKeywordDto) {
     const keywords = await this.sentimentService.expandKeywords(body.keyword);
     return { keywords };
   }
 
-  @Post("upload-csv")
+  @Post('upload-csv')
   @UseInterceptors(
-    FileInterceptor("file", {
-      storage: memoryStorage(), // ✅ 디스크 대신 메모리 저장
+    FileInterceptor('file', {
+      storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
         const ok =
-          file.mimetype === "text/csv" ||
-          file.originalname.toLowerCase().endsWith(".csv");
+          file.mimetype === 'text/csv' ||
+          file.originalname.toLowerCase().endsWith('.csv');
         cb(
-          ok ? null : new BadRequestException("CSV 파일만 업로드 가능합니다."),
+          ok ? null : new BadRequestException('CSV 파일만 업로드 가능합니다.'),
           ok,
         );
       },
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB 제한
+      limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
-  @ApiOperation({ summary: "CSV 업로드(리뷰 배치 저장)" })
-  @ApiConsumes("multipart/form-data")
+  @ApiOperation({ summary: 'CSV 업로드(리뷰 배치 저장)' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
-    description: "리뷰 CSV 업로드 (컬럼 예: review, restaurant_id)",
+    description: '리뷰 CSV 업로드 (컬럼 예: review, restaurant_id)',
     schema: {
-      type: "object",
+      type: 'object',
       properties: {
-        file: { type: "string", format: "binary" },
+        file: { type: 'string', format: 'binary' },
       },
     },
   })
   @ApiOkResponse({
-    description: "CSV 업로드 및 저장 결과",
+    description: 'CSV 업로드 및 저장 결과',
     schema: {
-      type: "object",
+      type: 'object',
       properties: {
-        message: { type: "string", example: "CSV 업로드 및 저장 완료" },
-        total: { type: "number", example: 100 },
-        success: { type: "number", example: 98 },
-        failed: { type: "number", example: 2 },
+        message: { type: 'string', example: 'CSV 업로드 및 저장 완료' },
+        total: { type: 'number', example: 100 },
+        success: { type: 'number', example: 98 },
+        failed: { type: 'number', example: 2 },
       },
     },
   })
   async uploadCsv(@UploadedFile() file: Express.Multer.File) {
     if (!file?.buffer) {
-      throw new BadRequestException("파일 업로드 실패: buffer가 비어있습니다.");
+      throw new BadRequestException('파일 업로드 실패: buffer가 비어있습니다.');
     }
 
-    // ========== 파일명 파싱 (한글 안전 디코딩) ==========
-    const rawFilename = file.originalname || "";
-    const safeFilename = Buffer.from(rawFilename, "latin1").toString("utf8");
+    const rawFilename = file.originalname || '';
+    const safeFilename = Buffer.from(rawFilename, 'latin1').toString('utf8');
     this.logger.log(
       `📂 업로드된 파일명: ${safeFilename}, size=${file.buffer.length}`,
     );
 
     const patterns = [
-      /^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/i, // 리뷰_가게이름_2025-09-21.csv
-      /^리뷰_(.+?)_\d{8}\.csv$/i, // 리뷰_가게이름_20250921.csv
-      /^리뷰_(.+?)\.csv$/i, // 리뷰_가게이름.csv
+      /^리뷰_(.+?)_\d{4}-\d{2}-\d{2}\.csv$/i,
+      /^리뷰_(.+?)_\d{8}\.csv$/i,
+      /^리뷰_(.+?)\.csv$/i,
     ];
 
     let storeName: string | null = null;
@@ -162,15 +162,17 @@ export class ReviewController {
     }
 
     const restaurant = await this.restaurantService.findByName(storeName);
-    if (!restaurant) {
-      throw new BadRequestException(
-        `가게이름 "${storeName}"에 해당하는 레스토랑을 찾을 수 없습니다.`,
+    let restaurantId: string | null = null;
+
+    if (restaurant) {
+      restaurantId = String(restaurant.id);
+      this.logger.log(`✅ 매칭된 restaurant: ${storeName} (id=${restaurantId})`);
+    } else {
+      this.logger.warn(
+        `⚠️ 가게 "${storeName}"을(를) DB에서 찾지 못했습니다. restaurant_id=null로 저장합니다.`,
       );
     }
-    const restaurantId = String(restaurant.id);
-    this.logger.log(`✅ 매칭된 restaurant: ${storeName} (id=${restaurantId})`);
 
-    // ========== CSV 파싱 및 저장 ==========
     let rows: { review: string }[] = [];
     try {
       rows = parse(file.buffer, {
@@ -198,11 +200,11 @@ export class ReviewController {
       try {
         const res = await this.reviewService.createReview({
           text: row.review,
-          restaurant_id: restaurantId,
-          user_id: undefined,
+          restaurant_id: restaurantId, // null 또는 실제 ID
+          user_id: null,
           source: ReviewSource.CRAWL,
         });
-        savedReviews.push(res.data);
+        savedReviews.push(res);
         successCount++;
       } catch (err: any) {
         this.logger.warn(
@@ -217,7 +219,7 @@ export class ReviewController {
     }
 
     return {
-      message: "CSV 업로드 및 저장 완료",
+      message: 'CSV 업로드 및 저장 완료',
       total: rows.length,
       success: successCount,
       failed: failCount,

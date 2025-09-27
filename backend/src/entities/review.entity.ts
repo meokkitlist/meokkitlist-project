@@ -20,42 +20,39 @@ export class Review {
   @Column({ type: 'text' })
   text: string;
 
-  // FK: restaurant.id (정수로 맞춤)
-  @Column({ type: 'integer' })
-  restaurant_id: number;
+  // FK: restaurant.id (nullable 허용)
+  @Column({ type: 'integer', nullable: true })
+  restaurant_id: number | null;
 
-  // 관계 설정 (CASCADE 삭제로 식당 삭제 시 리뷰도 삭제)
+  // 관계 설정 (식당 삭제 시 review는 남기되 FK를 null 처리)
   @ManyToOne(() => Restaurant, (restaurant) => restaurant.reviews, {
-    onDelete: 'CASCADE',
+    onDelete: 'SET NULL',
+    nullable: true,
   })
   @JoinColumn({ name: 'restaurant_id' })
-  restaurant: Restaurant;
+  restaurant: Restaurant | null;
 
   // 작성자 (선택)
   @Column({ type: 'text', nullable: true })
   user_id: string | null;
 
-  // 데이터 출처 (SQLite에서는 enum 대신 TEXT)
+  // 데이터 출처
   @Column({ type: 'text' })
   source: 'user' | 'crawl';
 
-  // 감성 레이블 (예: 'pos' | 'neg' | 'neu') — 실패 대비 nullable
+  // 감성 분석 결과들
   @Column({ type: 'text', nullable: true })
   sentiment: string | null;
 
-  // 감성 점수 (정수형, 실패 대비 nullable)
   @Column('int', { nullable: true })
   score: number | null;
 
-  // 이모지 (선택)
   @Column({ type: 'text', nullable: true })
   emoji: string | null;
 
-  // 퍼센트 (0~100, 선택)
   @Column('int', { nullable: true })
   percent: number | null;
 
-  // FastAPI 원본 응답 저장
   @Column('simple-json', { nullable: true })
   raw: any;
 }
