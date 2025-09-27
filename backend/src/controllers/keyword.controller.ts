@@ -19,12 +19,13 @@ export class KeywordController {
   async getKeywordSuggestions(@Query('q') query?: string): Promise<string[]> {
     if (!query || query.trim() === '') return [];
 
-    const q = query.trim().toLowerCase();
+    // 🔥 한글/URL 인코딩 대비 처리
+    const decoded = decodeURIComponent(query).trim().toLowerCase();
 
     // 1. Map 기반 자동완성
     const map = this.keywordMapService.getMap();
     const keywordCandidates = Array.from(map.keys())
-      .filter((k) => k.toLowerCase().startsWith(q))
+      .filter((k) => k.toLowerCase().startsWith(decoded))
       .slice(0, 10);
 
     if (keywordCandidates.length > 0) {
@@ -32,7 +33,7 @@ export class KeywordController {
     }
 
     // 2. GPT fallback
-    const gptResult = await this.gptService.extractKeywords(q);
+    const gptResult = await this.gptService.extractKeywords(decoded);
 
     // GPT 결과 중 map에 있는 키워드만 필터
     const valid = gptResult.filter((k) => map.has(k)).slice(0, 10);
