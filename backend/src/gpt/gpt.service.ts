@@ -48,13 +48,17 @@ export class GptService {
       const keyList = Array.from(this.keywordMapService.getMap().keys());
       this.logger.log(`🔑 KEY목록 갯수: ${keyList.length}`);
       prompt = [
-        "다음 KEY목록 중에서 문장과 가장 연관된 키워드 1~5개를 고르시오.",
-        "⚠️ 반드시 KEY목록 안에서만 골라야 한다.",
+        "너는 음식/식당 키워드 매퍼다.",
+        "다음 KEY목록 중에서 사용자가 입력한 문장과 가장 연관된 키워드 1~5개를 선택하라.",
+        "⚠️ 입력 단어가 목록에 없으면 반드시 가장 가까운 의미의 키워드를 골라야 한다.",
+        "⚠️ 입력 단어를 그대로 내보내면 안 된다.",
+        "⚠️ 반드시 KEY목록 안에서만 골라라.",
         "⚠️ 반드시 JSON 배열 형식으로만 출력하라. 예시: [\"짜장면\", \"중화요리\"]",
-        "⚠️ 절대 설명이나 문장 없이 JSON 배열만 출력하라.",
+        "⚠️ 설명, 문장, 불필요한 글자는 출력하지 마라.",
         `KEY목록: ${JSON.stringify(keyList)}`,
-        `문장: "${normalized}"`,
+        `사용자 입력: "${normalized}"`,
       ].join("\n");
+
     } catch (err) {
       this.logger.error("❌ KEY목록 구성 실패", err as any);
       throw new Error("KEY목록 구성 실패");
