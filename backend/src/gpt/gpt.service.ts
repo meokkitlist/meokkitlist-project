@@ -57,9 +57,9 @@ export class GptService {
         "너는 음식/식당 키워드 매퍼다.",
         "아래 KEY목록 중에서 사용자가 입력한 단어와 가장 연관된 키워드 1~5개를 JSON 배열로 출력하라.",
         "⚠️ 입력 단어가 KEY목록에 있으면 그대로 선택해도 된다.",
-        "⚠️ 입력 단어가 목록에 없으면 반드시 가장 가까운 의미의 키워드를 골라야 한다.",
-        "⚠️ 반드시 KEY목록 안에 존재하는 단어만 반환해야 한다.",
-        "⚠️ 설명, 문장, 불필요한 글자는 출력하지 마라.",
+        "⚠️ 입력 단어가 목록에 없으면 가장 가까운 의미의 키워드를 골라야 한다.",
+        "⚠️ KEY목록에 전혀 없으면, 새로운 연관 키워드를 직접 만들어도 된다.",
+        "⚠️ 반드시 JSON 배열만 반환해야 한다. 예: [\"삼겹살\", \"고기\"]",
         `KEY목록: ${JSON.stringify(candidateList)}`,
         `사용자 입력: "${normalized}"`,
       ].join("\n");
@@ -87,9 +87,7 @@ export class GptService {
       this.logger.debug(`📥 GPT raw=${raw}`);
       keywords = this.parseKeywordsFromResponse(raw);
 
-      // ⚠️ 전체 KEY목록 교차 검증
-      keywords = keywords.filter((k) => fullKeyList.includes(k));
-
+      // ✅ 더 이상 DB 교차 필터링 안 함
       if (!Array.isArray(keywords) || keywords.length === 0) {
         this.logger.warn(`⚠️ GPT 응답 무효, fallback 사용. raw="${raw}"`);
         keywords = this.keywordMapService.searchKeywords(
@@ -142,7 +140,7 @@ export class GptService {
         .map((s) => s.trim().replace(/^"|"$/g, ""))
         .filter(Boolean);
       this.logger.debug(
-        `🔁 쉼표 기반 fallback 파싱 결과: ${JSON.stringify(fallbackParsed)}`
+        `🔁 쉼표 기반 fallback 파싱 결과: ${JSON.stringify(fallbackParsed)}`,
       );
       return fallbackParsed;
     }
