@@ -59,14 +59,18 @@ import { AuthModule } from './auth/auth.module';
     // 2) HTTP 모듈
     HttpModule,
 
-    // 3) DB 연결 (PostgreSQL)
-    TypeOrmModule.forRoot({
-      type: 'postgres', // Render PostgreSQL
-      url: process.env.DATABASE_URL?.replace('postgresql://', 'postgres://'),
-      entities: [Review, Restaurant],
-      autoLoadEntities: true,
-      synchronize: true, // ⚠️ 개발/시연용 → 운영은 false + migration
-    }),
+   // 3) DB 연결 (PostgreSQL)
+  TypeOrmModule.forRoot({
+   type: 'postgres', // Render PostgreSQL
+   url: process.env.DATABASE_URL?.replace('postgresql://', 'postgres://'),
+   entities: [Review, Restaurant],
+   autoLoadEntities: true,
+   synchronize: true, // ⚠️ 개발/시연용 → 운영은 false + migration
+   ssl: {
+    rejectUnauthorized: false, // ✅ Render PostgreSQL 연결 필수
+  },
+}),
+
 
     // 4) 엔티티 레포지토리 등록
     TypeOrmModule.forFeature([Review, Restaurant]),

@@ -1,4 +1,3 @@
-// src/entities/restaurant.entity.ts
 import {
   Entity,
   Column,
@@ -18,16 +17,18 @@ export class Restaurant {
   @Column({ type: "text" })
   name: string;
 
-  @Column("text")
-  address: string;
+  // ✅ 주소 없을 수 있으니 nullable 허용
+  @Column("text", { nullable: true })
+  address: string | null;
 
-  // lat/lon → nullable 허용
+  // ✅ 위도/경도도 nullable 허용
   @Column("float", { nullable: true })
   lat: number | null;
 
   @Column("float", { nullable: true })
   lon: number | null;
 
+  // ✅ 키워드 JSON 배열 (nullable 허용)
   @Column("simple-json", { nullable: true })
   keywords: string[] | null;
 

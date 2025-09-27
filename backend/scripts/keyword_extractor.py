@@ -6,15 +6,20 @@ from konlpy.tag import Okt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from dotenv import load_dotenv
 
-# 📌 .env 로드
+# 📌 1. .env 로드
 load_dotenv()
 
-# 📌 PostgreSQL 연결 (env에서 DATABASE_URL 사용)
+# 📌 2. 환경 변수 로딩 확인
 DATABASE_URL = os.getenv("DATABASE_URL")
 assert DATABASE_URL, "❗ DATABASE_URL이 .env에 설정되어 있지 않습니다."
+print("📦 ENV_DATABASE_URL =", DATABASE_URL)
 
-# SQLAlchemy 엔진 생성
-engine = create_engine(DATABASE_URL)
+# 📌 3. SQLAlchemy 엔진 생성
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"client_encoding": "utf8"}
+)
+
 
 # ✅ 리뷰 + 레스토랑 JOIN 조회
 def fetch_reviews():
@@ -72,7 +77,7 @@ def save_keywords_to_db(results):
 
 # ✅ 특정 restaurant_id만 재추출
 def rebuild_keywords_for_restaurant(restaurant_id: int):
-    query = f"""
+    query = """
         SELECT r.id AS restaurant_id, r.name, r.keywords, rv.text
         FROM restaurant r
         LEFT JOIN review rv ON r.id = rv.restaurant_id

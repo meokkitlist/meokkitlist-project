@@ -1,16 +1,8 @@
-import os
+import sqlite3
 import json
 from konlpy.tag import Okt
 from sklearn.feature_extraction.text import TfidfVectorizer
-import pandas as pd
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
-
-# Load .env file
-load_dotenv()
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
+import os
 
 okt = Okt()
 
@@ -27,22 +19,22 @@ def extract_keywords(texts, top_n=5):
     return [w for w, _ in sorted_words[:top_n]]
 
 def main():
-    # PostgreSQL에서 restaurant 데이터 가져오기
-    restaurants = pd.read_sql_query("SELECT id, name FROM restaurant", con=engine)
+    db_path = "./meokkitlist.sqlite"
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    # 음식점 리스트 가져오기
+    cur.execute("SELECT id, name FROM restaurant")
+    restaurants = cur.fetchall()
 
     results = []
 
-    for _, row in restaurants.iterrows():
-        r_id, r_name = row["id"], row["name"]
-        
-        # 각 음식점의 리뷰 가져오기
-        query = text("SELECT text FROM review WHERE restaurant_id = :id")
-        reviews_df = pd.read_sql_query(query, con=engine, params={"id": r_id})
-        reviews = reviews_df["text"].tolist()
-
+    for r_id, r_name in restaurants:
+        # 🔧 컬럼 이름 수정: content → text / restaurantId → restaurant_id
+        cur.execute("SELECT text FROM review WHERE restaurant_id = ?", (r_id,))
+        reviews = [row[0] for row in cur.fetchall()]
         if not reviews:
             continue
-
         keywords = extract_keywords(reviews)
         results.append((r_id, keywords))
         print(f"📌 {r_name} → {keywords}")

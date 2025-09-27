@@ -1,0 +1,5 @@
+﻿id,text,restaurant_id,user_id,source,sentiment,score,emoji,percent,raw
+1,우와 진짜 찐짜 우와 완전 맛있어요!,1,user567,user,error,0,❌,0,"{""top_label"":""error"",""top_prob"":0}"
+2,우와우우우우우우우우와 완전 맛있어요!,1,user123,user,Positive,38,😊,55,"{""restaurant_id"":1,""labels"":[""very_pos"",""pos"",""neu"",""neg"",""very_neg""],""probs"":[0.4538377523422241,0.5461622476577759],""top_label"":""pos"",""top_prob"":0.5461622476577759,""ui"":{""emoji"":""😊"",""percent"":55}}"
+3,고기 맛있고 친절했어요!,1,user001,user,Positive,36,😊,51,"{""restaurant_id"":1,""labels"":[""very_pos"",""pos"",""neu"",""neg"",""very_neg""],""probs"":[0.48777154088020325,0.5122284293174744],""top_label"":""pos"",""top_prob"":0.5122284293174744,""ui"":{""emoji"":""😊"",""percent"":51}}"
+4,고기 맛있어요!,1,,user,,85,,0,
