@@ -22,19 +22,20 @@ export class KeywordController {
     // 🔥 한글/URL 인코딩 대비
     const decoded = decodeURIComponent(query).trim().toLowerCase();
 
-    // 1. Map 기반 자동완성
+    // 1. Map 기반 자동완성 (DB에 있는 키워드 우선)
     const map = this.keywordMapService.getMap();
     const keywordCandidates = Array.from(map.keys())
       .filter((k) => k.toLowerCase().startsWith(decoded))
       .slice(0, 10);
 
-    // 2. GPT 확장 결과
+    // 2. GPT 확장 결과 (DB 여부와 상관없이 사용)
     const gptResult = await this.gptService.extractKeywords(decoded);
-    const validGpt = gptResult.filter((k) => map.has(k)).slice(0, 10);
 
     // 3. 합치기 + 중복 제거
-    const merged = Array.from(new Set([...keywordCandidates, ...validGpt]));
+    //    - DB 결과 먼저, GPT 결과도 포함
+    const merged = Array.from(new Set([...keywordCandidates, ...gptResult]));
 
-    return merged.slice(0, 10); // 최대 10개까지만 반환
+    // 4. 최대 10개까지만 반환
+    return merged.slice(0, 10);
   }
 }
