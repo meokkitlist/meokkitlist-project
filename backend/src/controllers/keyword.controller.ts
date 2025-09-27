@@ -13,13 +13,13 @@ export class KeywordController {
 
   /**
    * ✅ GET /v1/keywords?q=삼겹
-   * 자동완성 키워드 추천
+   * 자동완성 + GPT 확장 키워드 추천
    */
   @Get()
   async getKeywordSuggestions(@Query('q') query?: string): Promise<string[]> {
     if (!query || query.trim() === '') return [];
 
-    // 🔥 한글/URL 인코딩 대비 처리
+    // 🔥 한글/URL 인코딩 대비
     const decoded = decodeURIComponent(query).trim().toLowerCase();
 
     // 1. Map 기반 자동완성
@@ -28,16 +28,13 @@ export class KeywordController {
       .filter((k) => k.toLowerCase().startsWith(decoded))
       .slice(0, 10);
 
-    if (keywordCandidates.length > 0) {
-      return keywordCandidates;
-    }
-
-    // 2. GPT fallback
+    // 2. GPT 확장 결과
     const gptResult = await this.gptService.extractKeywords(decoded);
+    const validGpt = gptResult.filter((k) => map.has(k)).slice(0, 10);
 
-    // GPT 결과 중 map에 있는 키워드만 필터
-    const valid = gptResult.filter((k) => map.has(k)).slice(0, 10);
+    // 3. 합치기 + 중복 제거
+    const merged = Array.from(new Set([...keywordCandidates, ...validGpt]));
 
-    return valid;
+    return merged.slice(0, 10); // 최대 10개까지만 반환
   }
 }

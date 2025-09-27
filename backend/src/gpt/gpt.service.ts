@@ -1,3 +1,5 @@
+// src/gpt/gpt.service.ts
+
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Cache } from "cache-manager";
@@ -45,20 +47,18 @@ export class GptService {
     // 2. GPT 프롬프트 구성
     let prompt = "";
     let candidateList: string[] = [];
+    const fullKeyList = Array.from(this.keywordMapService.getMap().keys());
+
     try {
-      // 🔑 후보 KEY목록 줄여서 전달 (연관성 높은 50개만)
       candidateList = this.keywordMapService.searchKeywords(normalized, 50);
-      this.logger.log(
-        `🔑 후보 KEY목록 ${candidateList.length}개 선택 (검색 기반)`
-      );
+      this.logger.log(`🔑 후보 KEY목록 ${candidateList.length}개 선택`);
 
       prompt = [
         "너는 음식/식당 키워드 매퍼다.",
-        "다음 KEY목록 중에서 사용자가 입력한 단어와 가장 연관된 키워드 1~5개를 선택하라.",
+        "아래 KEY목록 중에서 사용자가 입력한 단어와 가장 연관된 키워드 1~5개를 JSON 배열로 출력하라.",
         "⚠️ 입력 단어가 KEY목록에 있으면 그대로 선택해도 된다.",
         "⚠️ 입력 단어가 목록에 없으면 반드시 가장 가까운 의미의 키워드를 골라야 한다.",
-        "⚠️ 반드시 KEY목록 안에서만 골라라.",
-        "⚠️ 반드시 JSON 배열 형식으로만 출력하라. 예시: [\"짜장면\", \"중화요리\"]",
+        "⚠️ 반드시 KEY목록 안에 존재하는 단어만 반환해야 한다.",
         "⚠️ 설명, 문장, 불필요한 글자는 출력하지 마라.",
         `KEY목록: ${JSON.stringify(candidateList)}`,
         `사용자 입력: "${normalized}"`,
@@ -76,7 +76,7 @@ export class GptService {
       const response = await this.openai.chat.completions.create({
         model: this.MODEL,
         messages: [
-          { role: "system", content: "너는 키워드 추출기다." },
+          { role: "system", content: "너는 음식/식당 키워드 매퍼다." },
           { role: "user", content: prompt },
         ],
         temperature: 0,
@@ -87,11 +87,11 @@ export class GptService {
       this.logger.debug(`📥 GPT raw=${raw}`);
       keywords = this.parseKeywordsFromResponse(raw);
 
-      // ⚠️ KEY목록 교차 검증 (GPT가 엉뚱한 거 줄 수 있음)
-      keywords = keywords.filter((k) => candidateList.includes(k));
+      // ⚠️ 전체 KEY목록 교차 검증
+      keywords = keywords.filter((k) => fullKeyList.includes(k));
 
       if (!Array.isArray(keywords) || keywords.length === 0) {
-        this.logger.warn(`⚠️ GPT 응답 파싱 실패/무효, fallback 사용. raw="${raw}"`);
+        this.logger.warn(`⚠️ GPT 응답 무효, fallback 사용. raw="${raw}"`);
         keywords = this.keywordMapService.searchKeywords(
           normalized,
           this.MAX_RETURN,
@@ -123,7 +123,6 @@ export class GptService {
 
   private parseKeywordsFromResponse(raw: string): string[] {
     try {
-      // JSON 배열만 추출
       const match = raw.match(/\[.*\]/s);
       if (match) {
         const arr = JSON.parse(match[0]);
@@ -137,7 +136,6 @@ export class GptService {
       this.logger.warn(`⚠️ GPT 응답 JSON 파싱 실패: ${err}`);
     }
 
-    // 쉼표 기반 파싱
     if (raw.includes(",")) {
       const fallbackParsed = raw
         .split(",")
@@ -149,7 +147,6 @@ export class GptService {
       return fallbackParsed;
     }
 
-    // 단일 키워드
     const only = raw.replace(/^\[|\]$/g, "").trim().replace(/^"|"$/g, "");
     return only ? [only] : [];
   }
