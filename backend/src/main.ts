@@ -25,7 +25,8 @@ async function bootstrap() {
     origin: '*', // 모든 오리진 허용
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+    allowedHeaders:
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization',
     exposedHeaders: ['Set-Cookie'],
     optionsSuccessStatus: 204,
   });
@@ -35,6 +36,8 @@ async function bootstrap() {
     .setTitle('MeokkitList API')
     .setDescription('API documentation for MeokkitList project')
     .setVersion('1.0')
+    .addServer('http://localhost:3001', 'Local server') // ✅ 로컬 서버
+    .addServer('https://meokkitlist-project.onrender.com', 'Render server') // ✅ Render 배포 서버
     .addCookieAuth('Authentication', {
       type: 'apiKey',
       in: 'cookie',
@@ -47,7 +50,10 @@ async function bootstrap() {
   SwaggerModule.setup('api-docs', app, swaggerDoc);
 
   // 5) 서버 시작
-  const PORT = parseInt(process.env.PORT ?? process.env.APP_PORT ?? '3001', 10);
+  const PORT = parseInt(
+    process.env.PORT ?? process.env.APP_PORT ?? '3001',
+    10,
+  );
   await app.listen(PORT, '0.0.0.0');
 
   logger.log(`🚀 Server is running on http://localhost:${PORT}`);
