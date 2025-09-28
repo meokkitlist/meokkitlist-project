@@ -27,8 +27,8 @@ export class AuthController {
     res.cookie('Authentication', token, {
       httpOnly: true,
       secure: isProd, // HTTPS 환경(Render)에서는 true
-      sameSite: isProd ? 'none' : 'lax', // 프론트(Vercel) ↔ 백엔드(Render) 교차 허용
-      domain: this.cfg.get('COOKIE_DOMAIN') || undefined, // ⚠️ Render에서는 .env에서 제거
+      sameSite: isProd ? 'none' : 'lax', // Vercel(프론트) ↔ Render(백엔드) 교차 허용
+      // ❌ domain 제거 → 자동으로 현재 서버 도메인(onrender.com)에 설정됨
       maxAge: 1000 * 60 * 60 * 2, // 2시간
       path: '/',
     });
@@ -41,7 +41,7 @@ export class AuthController {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
-      domain: this.cfg.get('COOKIE_DOMAIN') || undefined,
+      // ❌ domain 제거
       path: '/',
     });
   }
@@ -60,7 +60,8 @@ export class AuthController {
   ) {
     const { token } = await this.auth.login(dto.email, dto.password);
     this.setAuthCookie(res, token);
-    return { message: '로그인 성공' };
+    // 👉 Swagger 디버깅 편의를 위해 token도 같이 반환
+    return { message: '로그인 성공', token };
   }
 
   @UseGuards(JwtCookieGuard)
