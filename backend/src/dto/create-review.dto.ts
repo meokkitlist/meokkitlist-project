@@ -1,5 +1,6 @@
+// src/dto/create-review.dto.ts
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsEnum, IsOptional, IsString } from "class-validator";
+import { IsEnum, IsOptional, IsString, IsNumberString } from "class-validator";
 
 export enum ReviewSource {
   USER = "user",
@@ -12,11 +13,12 @@ export class CreateReviewDto {
   text!: string;
 
   @ApiPropertyOptional({
-    description: "가게 ID (없을 수도 있음)",
+    description: "가게 ID (없을 수도 있음, string 또는 number 허용)",
     example: "123",
   })
   @IsOptional()
-  restaurant_id?: string | number;   // ✅ string/number 허용, validation 제거
+  // 문자열/숫자 둘 다 허용 (예: "12" 또는 12)
+  restaurant_id?: string | number;
 
   @ApiPropertyOptional({ description: "작성자 사용자 ID", example: "u_42" })
   @IsOptional()
@@ -25,7 +27,7 @@ export class CreateReviewDto {
 
   @ApiProperty({
     enum: ReviewSource,
-    description: "리뷰 소스",
+    description: "리뷰 소스 (user | crawl)",
     example: ReviewSource.CRAWL,
   })
   @IsEnum(ReviewSource)

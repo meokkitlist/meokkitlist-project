@@ -109,7 +109,7 @@ export class ReviewController {
   @ApiOperation({ summary: 'CSV 업로드(리뷰 배치 저장)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
-    description: '리뷰 CSV 업로드 (컬럼 예: review, restaurant_id)',
+    description: '리뷰 CSV 업로드 (컬럼 예: text, source 또는 review)',
     schema: {
       type: 'object',
       properties: {
@@ -173,7 +173,7 @@ export class ReviewController {
       );
     }
 
-    let rows: { review: string }[] = [];
+    let rows: any[] = [];
     try {
       rows = parse(file.buffer, {
         columns: true,
@@ -195,23 +195,24 @@ export class ReviewController {
     this.logger.log(`📊 총 ${rows.length}개의 리뷰를 파싱했습니다.`);
 
     for (const row of rows) {
-      if (!row.review || row.review.length === 0) continue;
+      // ✅ text 우선, 없으면 review 컬럼 사용
+      const reviewText = row.text || row.review;
+      if (!reviewText || reviewText.length === 0) continue;
 
       try {
         const res = await this.reviewService.createReview({
-          text: row.review,
+          text: reviewText,
           restaurant_id: restaurantId, // null 또는 실제 ID
-          user_id: null,
           source: ReviewSource.CRAWL,
         });
         savedReviews.push(res);
         successCount++;
       } catch (err: any) {
         this.logger.warn(
-          `❌ 리뷰 저장 실패: "${row.review}"\n에러: ${err?.message ?? err}`,
+          `❌ 리뷰 저장 실패: "${reviewText}"\n에러: ${err?.message ?? err}`,
         );
         failedReviews.push({
-          review: row.review,
+          review: reviewText,
           error: err?.message ?? String(err),
         });
         failCount++;
