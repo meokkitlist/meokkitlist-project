@@ -21,23 +21,26 @@ export class AuthController {
     private readonly cfg: ConfigService,
   ) {}
 
-  // ✅ 쿠키 설정 함수 (중복 제거)
+  // ✅ 공통 쿠키 세팅
   private setAuthCookie(res: Response, token: string) {
+    const isProd = this.cfg.get('NODE_ENV') === 'production';
     res.cookie('Authentication', token, {
       httpOnly: true,
-      secure: this.cfg.get('NODE_ENV') === 'production',
-      sameSite: 'none', // ✅ 크로스사이트 인증 허용
-      domain: this.cfg.get('COOKIE_DOMAIN') || undefined,
-      maxAge: 1000 * 60 * 15, // 15분
+      secure: isProd, // HTTPS 환경(Render)에서는 true
+      sameSite: isProd ? 'none' : 'lax', // 프론트(Vercel) ↔ 백엔드(Render) 교차 허용
+      domain: this.cfg.get('COOKIE_DOMAIN') || undefined, // ⚠️ Render에서는 .env에서 제거
+      maxAge: 1000 * 60 * 60 * 2, // 2시간
       path: '/',
     });
   }
 
+  // ✅ 로그아웃 시 쿠키 제거
   private clearAuthCookie(res: Response) {
+    const isProd = this.cfg.get('NODE_ENV') === 'production';
     res.clearCookie('Authentication', {
       httpOnly: true,
-      secure: this.cfg.get('NODE_ENV') === 'production',
-      sameSite: 'none',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       domain: this.cfg.get('COOKIE_DOMAIN') || undefined,
       path: '/',
     });
@@ -63,7 +66,7 @@ export class AuthController {
   @UseGuards(JwtCookieGuard)
   @Get('me')
   me(@Req() req: Request) {
-    return { email: (req as any).user?.email }; // 🔐 req.user는 guard에서 주입됨
+    return { email: (req as any).user?.email };
   }
 
   @HttpCode(200)
