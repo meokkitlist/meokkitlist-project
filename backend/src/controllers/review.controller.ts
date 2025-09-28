@@ -1,4 +1,3 @@
-// src/controllers/review.controller.ts
 import {
   BadRequestException,
   Body,
@@ -161,17 +160,9 @@ export class ReviewController {
       );
     }
 
-    const restaurant = await this.restaurantService.findByName(storeName);
-    let restaurantId: string | null = null;
-
-    if (restaurant) {
-      restaurantId = String(restaurant.id);
-      this.logger.log(`✅ 매칭된 restaurant: ${storeName} (id=${restaurantId})`);
-    } else {
-      this.logger.warn(
-        `⚠️ 가게 "${storeName}"을(를) DB에서 찾지 못했습니다. restaurant_id=null로 저장합니다.`,
-      );
-    }
+    // ✅ DB에 없으면 restaurant 자동 생성
+    const restaurant = await this.restaurantService.getOrCreateRestaurantByName(storeName);
+    const restaurantId = String(restaurant.id);
 
     let rows: any[] = [];
     try {
@@ -195,14 +186,13 @@ export class ReviewController {
     this.logger.log(`📊 총 ${rows.length}개의 리뷰를 파싱했습니다.`);
 
     for (const row of rows) {
-      // ✅ text 우선, 없으면 review 컬럼 사용
       const reviewText = row.text || row.review;
       if (!reviewText || reviewText.length === 0) continue;
 
       try {
         const res = await this.reviewService.createReview({
           text: reviewText,
-          restaurant_id: restaurantId, // null 또는 실제 ID
+          restaurant_id: restaurantId,
           source: ReviewSource.CRAWL,
         });
         savedReviews.push(res);

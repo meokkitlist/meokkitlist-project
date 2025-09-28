@@ -4,7 +4,7 @@ import { Repository } from "typeorm";
 import { Restaurant } from "../entities/restaurant.entity";
 import { CreateRestaurantDto } from "../dto/create-restaurant.dto";
 import * as fs from "fs";
-import * as csv from "csv-parser"; // ✅ 여기 수정
+import * as csv from "csv-parser";
 
 @Injectable()
 export class RestaurantService {
@@ -31,6 +31,27 @@ export class RestaurantService {
 
   async findByName(name: string): Promise<Restaurant | null> {
     return this.restaurantRepo.findOne({ where: { name } });
+  }
+
+  // ✅ 파일명 기반 restaurant 자동 생성
+  async getOrCreateRestaurantByName(name: string): Promise<Restaurant> {
+    let restaurant = await this.findByName(name);
+    if (restaurant) {
+      return restaurant;
+    }
+
+    this.logger.warn(`⚠️ 가게 "${name}" DB에 없음 → 신규 생성`);
+    restaurant = this.restaurantRepo.create({
+    name,
+    address: '',
+    lat: null,
+    lon: null,
+    keywords: [],     // ✅ 빈 배열
+    review_count: 0,
+    total_score: 0,
+  });
+
+    return this.restaurantRepo.save(restaurant);
   }
 
   /** CSV 파일(헤더: name,address,lat,lon[,preview])을 읽어 일괄 insert */
@@ -65,33 +86,19 @@ export class RestaurantService {
 
       const aliasMap: Record<string, string> = {
         id: "id",
-        아이디: "id",
         name: "name",
-        이름: "name",
         storename: "name",
-        storeName: "name",
         address: "address",
-        주소: "address",
-        storeaddress: "address",
         url: "url",
-        링크: "url",
         lat: "lat",
         latitude: "lat",
-        위도: "lat",
-        lat위도: "lat",
         lon: "lon",
         lng: "lon",
         longitude: "lon",
-        경도: "lon",
-        lon경도: "lon",
         review: "review",
-        리뷰: "review",
         review_count: "review_count",
-        리뷰수: "review_count",
         naver_score: "naver_score",
-        네이버점수: "naver_score",
         preview: "preview",
-        미리보기: "preview",
       };
 
       return aliasMap[h] ?? h;
@@ -108,8 +115,6 @@ export class RestaurantService {
         )
         .on("data", (row: any) => {
           try {
-            this.logger.debug(`📌 CSV Row(raw): ${JSON.stringify(row)}`);
-
             const name = String(row["name"] ?? "").trim();
             const address = String(row["address"] ?? "").trim();
             const lat = normalizeNumber(row["lat"]);
@@ -131,18 +136,6 @@ export class RestaurantService {
 
             if (!name) {
               this.logger.warn(`⚠️ 이름 누락, 스킵: ${JSON.stringify(row)}`);
-              return;
-            }
-            if (!address) {
-              this.logger.warn(`⚠️ 주소 누락, 스킵: ${JSON.stringify(row)}`);
-              return;
-            }
-            if (Number.isNaN(lat)) {
-              this.logger.warn(`⚠️ 위도 누락/형식오류, 스킵: ${JSON.stringify(row)}`);
-              return;
-            }
-            if (Number.isNaN(lon)) {
-              this.logger.warn(`⚠️ 경도 누락/형식오류, 스킵: ${JSON.stringify(row)}`);
               return;
             }
 
