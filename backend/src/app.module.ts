@@ -45,6 +45,7 @@ import { RestaurantService } from './services/restaurant.service';
 // Entities
 import { Review } from './entities/review.entity';
 import { Restaurant } from './entities/restaurant.entity';
+import { User } from './entities/user.entity';
 
 // 인증 모듈
 import { AuthModule } from './auth/auth.module';
@@ -63,7 +64,7 @@ import { AuthModule } from './auth/auth.module';
   TypeOrmModule.forRoot({
    type: 'postgres', // Render PostgreSQL
    url: process.env.DATABASE_URL?.replace('postgresql://', 'postgres://'),
-   entities: [Review, Restaurant],
+   entities: [Review, Restaurant, User],   // ✅ User 추가
    autoLoadEntities: true,
    synchronize: true, // ⚠️ 개발/시연용 → 운영은 false + migration
    ssl: {
@@ -73,7 +74,7 @@ import { AuthModule } from './auth/auth.module';
 
 
     // 4) 엔티티 레포지토리 등록
-    TypeOrmModule.forFeature([Review, Restaurant]),
+    TypeOrmModule.forFeature([Review, Restaurant, User]),
 
     // 5) 전역 캐시 (Redis)
     CacheModule.registerAsync({
