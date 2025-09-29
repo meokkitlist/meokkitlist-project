@@ -11,16 +11,15 @@ import * as fs from "fs";
 import * as path from "path";
 import { ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import { RestaurantService } from "../services/restaurant.service";
-import { Express } from "express"; // ✅ 추가
+import { Express } from "express";
 
-// 업로드 디렉토리 지정
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "csv");
 
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-@ApiTags("Restaurant") // Swagger 그룹 이름
+@ApiTags("Restaurant")
 @Controller("restaurant")
 export class RestaurantController {
   constructor(private readonly restaurantService: RestaurantService) {
@@ -37,11 +36,12 @@ export class RestaurantController {
         },
         filename: (_req, file, cb) => {
           const ts = Date.now();
-          const ext = path.extname(file.originalname) || ".csv";
-          // 한글 파일명 인코딩 복원
-          const rawFilename = file.originalname;
-          const decodedFilename = decodeURIComponent(escape(rawFilename));
-          cb(null, `restaurant_${ts}_${decodedFilename}${ext}`);
+          const parsed = path.parse(file.originalname);
+          // 안전한 파일명 생성 (확장자 보존, 중복 확장자 방지)
+          const safeBase =
+            parsed.name.normalize("NFKC").replace(/[^\w가-힣.\-_/]/g, "_") || "restaurants";
+          const ext = parsed.ext?.toLowerCase() === ".csv" ? ".csv" : ".csv";
+          cb(null, `restaurant_${ts}_${safeBase}${ext}`);
         },
       }),
       fileFilter: (_req, file, cb) => {
@@ -60,16 +60,14 @@ export class RestaurantController {
   @ApiBody({
     schema: {
       type: "object",
-      properties: {
-        file: { type: "string", format: "binary" },
-      },
+      properties: { file: { type: "string", format: "binary" } },
     },
   })
-  async uploadCsv(@UploadedFile() file: Express.Multer.File) { // ✅ 타입 확실히 지정
+  async uploadCsv(@UploadedFile() file: Express.Multer.File) {
     if (!file?.path) {
       throw new BadRequestException("파일 업로드 실패");
     }
-    const { inserted } = await this.restaurantService.uploadCsv(file.path);
-    return { inserted };
+    const result = await this.restaurantService.uploadCsv(file.path);
+    return result; // { inserted, skipped, withCoords, withoutCoords }
   }
 }
