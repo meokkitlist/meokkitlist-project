@@ -21,9 +21,12 @@ export class KeywordMapService {
     const newMap = new Map<string, number[]>();
 
     for (const restaurant of allRestaurants) {
-      if (!restaurant.keywords || restaurant.keywords.length === 0) continue;
+      if (!restaurant.keywords || (restaurant.keywords as any).length === 0)
+        continue;
 
-      const keywordList: string[] = this.safeParseKeywords(restaurant.keywords);
+      const keywordList: string[] = this.safeParseKeywords(
+        restaurant.keywords,
+      );
 
       for (const keyword of keywordList) {
         const trimmed = keyword.trim();
@@ -53,7 +56,7 @@ export class KeywordMapService {
     return this.keywordToRestaurantMap;
   }
 
-  // ✅ 새로 추가: 부분 검색 (GPT 실패 시 fallback)
+  // ✅ 부분 검색 (GPT 실패 시 fallback)
   searchKeywords(q: string, limit = 10): string[] {
     const Q = q.trim().toLowerCase();
     if (!Q) return [];
@@ -63,7 +66,7 @@ export class KeywordMapService {
     return hits.slice(0, limit);
   }
 
-  // ✅ 새로 추가: 전체 키워드 목록
+  // ✅ 전체 키워드 목록
   getAllKeywordsList(): string[] {
     return Array.from(this.keywordToRestaurantMap.keys());
   }

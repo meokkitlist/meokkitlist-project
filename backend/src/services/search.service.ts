@@ -58,17 +58,23 @@ export class SearchService implements OnModuleInit {
       let expandedKeywords: string[] = [];
       if (unknownKeywords.length > 0) {
         this.logger.log(`🤖 GPT 호출 필요: ${JSON.stringify(unknownKeywords)}`);
-        const gptResults = await this.gptService.extractKeywords(unknownKeywords.join(", "));
+        const gptResults = await this.gptService.extractKeywords(
+          unknownKeywords.join(", "),
+        );
         expandedKeywords = gptResults.filter(
           (k) => this.keywordMapService.getRestaurantIdsByKeyword(k).length > 0,
         );
-        this.logger.log(`🔁 GPT 유사어 중 사용 가능한 키워드: ${JSON.stringify(expandedKeywords)}`);
+        this.logger.log(
+          `🔁 GPT 유사어 중 사용 가능한 키워드: ${JSON.stringify(expandedKeywords)}`,
+        );
       }
 
       extractedKeywords = [...knownKeywords, ...expandedKeywords];
     } else if (keyword) {
       extractedKeywords = await this.gptService.extractKeywords(keyword);
-      this.logger.log(`🤖 GPT 문장 기반 키워드 추출: ${JSON.stringify(extractedKeywords)}`);
+      this.logger.log(
+        `🤖 GPT 문장 기반 키워드 추출: ${JSON.stringify(extractedKeywords)}`,
+      );
     }
 
     if (!extractedKeywords || extractedKeywords.length === 0) {
@@ -95,10 +101,17 @@ export class SearchService implements OnModuleInit {
       candidates = await this.restaurantRepo.find({ where: { id: In(idList) } });
     }
 
+    // ✅ fallback: jsonb → text 캐스팅 + name/address/preview 포함
     if (candidates.length === 0 && keyword) {
       candidates = await this.restaurantRepo
         .createQueryBuilder("r")
-        .where("r.keywords LIKE :kw", { kw: `%${keyword}%` })
+        .where(
+          `r.name ILIKE :kw
+           OR r.address ILIKE :kw
+           OR r.preview ILIKE :kw
+           OR r.keywords::text ILIKE :kw`,
+          { kw: `%${keyword}%` },
+        )
         .getMany();
     }
 
@@ -109,7 +122,10 @@ export class SearchService implements OnModuleInit {
 
     let enriched = candidates.map((r) => {
       const rKeywords = this.safeParseKeywords((r as any).keywords);
-      const { score: matchScore, matched } = this.calcMatchScore(rKeywords, needles);
+      const { score: matchScore, matched } = this.calcMatchScore(
+        rKeywords,
+        needles,
+      );
 
       const totalScore = (r as any).total_score ?? 0;
       const reviewCount = (r as any).review_count ?? 0;
@@ -123,7 +139,12 @@ export class SearchService implements OnModuleInit {
         );
       }
 
-      const finalScore = this.calcFinalScore({ matchScore, totalScore, reviewCount, sentimentScore });
+      const finalScore = this.calcFinalScore({
+        matchScore,
+        totalScore,
+        reviewCount,
+        sentimentScore,
+      });
 
       return {
         raw: r,
@@ -137,9 +158,11 @@ export class SearchService implements OnModuleInit {
       };
     });
 
+    // ✅ range(m 단위) ↔︎ distanceKm(km) 변환
     if (range && userPosition?.lat && userPosition?.lon) {
+      const rangeMeters = Number(range);
       enriched = enriched.filter(
-        (e) => e.distanceKm !== null && (e.distanceKm as number) <= Number(range),
+        (e) => e.distanceKm !== null && e.distanceKm! * 1000 <= rangeMeters,
       );
     }
 
@@ -170,15 +193,20 @@ export class SearchService implements OnModuleInit {
           preview: (r as any).preview ?? null,
           reviewCount: e.reviewCount,
           sentimentScore: e.sentimentScore,
-          finalScore: e.finalScore, // ✅ 총점
+          finalScore: e.finalScore,
           marketUrl:
             r.lat && r.lon
-              ? `https://map.kakao.com/link/to/${encodeURIComponent((r as any).name)},${r.lat},${r.lon}`
+              ? `https://map.kakao.com/link/to/${encodeURIComponent(
+                  (r as any).name,
+                )},${r.lat},${r.lon}`
               : undefined,
           relatedKeyword: this.safeParseKeywords((r as any).keywords),
           keywordsMatched: e.keywordsMatched,
           naverScore: (r as any).naver_score ?? null,
-          coordinates: { lat: (r as any).lat ?? null, lon: (r as any).lon ?? null },
+          coordinates: {
+            lat: (r as any).lat ?? null,
+            lon: (r as any).lon ?? null,
+          },
           distanceKm: e.distanceKm,
           rank: i + 1,
         };
@@ -210,13 +238,19 @@ export class SearchService implements OnModuleInit {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? (parsed as string[]) : [];
       } catch {
-        return raw.split(",").map((s) => s.trim()).filter(Boolean);
+        return raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
     }
     return [];
   }
 
-  private calcMatchScore(restaurantKeywords: string[], needleKeywords: string[]) {
+  private calcMatchScore(
+    restaurantKeywords: string[],
+    needleKeywords: string[],
+  ) {
     const rset = new Set(restaurantKeywords.map((k) => k.trim()));
     let score = 0;
     const matched: string[] = [];
@@ -224,7 +258,9 @@ export class SearchService implements OnModuleInit {
       const k = kw.trim();
       const hit =
         rset.has(k) ||
-        Array.from(rset).some((rk) => rk.includes(k) || k.includes(rk));
+        Array.from(rset).some(
+          (rk) => rk.includes(k) || k.includes(rk),
+        );
       if (hit) {
         score += 1;
         matched.push(k);
