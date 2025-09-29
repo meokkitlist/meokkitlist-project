@@ -20,7 +20,6 @@ engine = create_engine(
     connect_args={"client_encoding": "utf8"}
 )
 
-
 # ✅ 리뷰 + 레스토랑 JOIN 조회
 def fetch_reviews():
     query = """
@@ -35,15 +34,14 @@ def fetch_reviews():
 def extract_keywords(texts, top_n=10):
     okt = Okt()
     docs = [" ".join(okt.nouns(str(t))) for t in texts if t]
+    if not docs:
+        return []
     vectorizer = TfidfVectorizer(token_pattern=r"(?u)\b\w+\b", max_features=1000)
     X = vectorizer.fit_transform(docs)
-    keywords = []
-    for i in range(X.shape[0]):
-        row = X[i].toarray().flatten()
-        top_indices = row.argsort()[::-1][:top_n]
-        words = [vectorizer.get_feature_names_out()[j] for j in top_indices if row[j] > 0]
-        keywords.append(words)
-    return keywords
+    row = X.toarray().sum(axis=0)  # 전체 리뷰 합쳐서 대표 키워드 추출
+    top_indices = row.argsort()[::-1][:top_n]
+    words = [vectorizer.get_feature_names_out()[j] for j in top_indices if row[j] > 0]
+    return words
 
 # ✅ 전체 키워드 추출 루프
 def run():
@@ -53,14 +51,13 @@ def run():
 
     for rest_id, group in grouped:
         all_texts = list(group['text'].dropna())
-
         if not all_texts:
             continue
 
-        top_keywords = extract_keywords([" ".join(all_texts)])
+        top_keywords = extract_keywords(all_texts)
         results.append({
             "restaurant_id": rest_id,
-            "keywords": top_keywords[0] if top_keywords else []
+            "keywords": top_keywords
         })
 
     return results
@@ -81,7 +78,7 @@ def rebuild_keywords_for_restaurant(restaurant_id: int):
         SELECT r.id AS restaurant_id, r.name, r.keywords, rv.text
         FROM restaurant r
         LEFT JOIN review rv ON r.id = rv.restaurant_id
-        WHERE r.id = :restaurant_id
+        WHERE r.id = %(restaurant_id)s
     """
     df = pd.read_sql_query(query, engine, params={"restaurant_id": restaurant_id})
 
@@ -94,8 +91,8 @@ def rebuild_keywords_for_restaurant(restaurant_id: int):
         print(f"⚠️ No reviews found for restaurant id {restaurant_id}")
         return
 
-    top_keywords = extract_keywords([" ".join(all_texts)])
-    kw_json = json.dumps(top_keywords[0], ensure_ascii=False)
+    top_keywords = extract_keywords(all_texts)
+    kw_json = json.dumps(top_keywords, ensure_ascii=False)
 
     with engine.begin() as conn:
         conn.execute(
@@ -103,7 +100,7 @@ def rebuild_keywords_for_restaurant(restaurant_id: int):
             {"kw": kw_json, "id": restaurant_id}
         )
 
-    print(f"✅ 키워드 재추출 완료 for restaurant_id={restaurant_id}")
+    print(f"✅ 키워드 재추출 완료 for restaurant_id={restaurant_id}: {kw_json}")
 
 # ✅ 진입점
 if __name__ == "__main__":
