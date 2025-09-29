@@ -18,12 +18,12 @@ export class RestaurantService {
   async create(data: CreateRestaurantDto): Promise<Restaurant> {
     const restaurant = this.restaurantRepo.create({
       ...data,
-      // 저장 시 NaN 방지: 숫자가 아니면 null로
       lat: this.toNullableNumber(data.lat),
       lon: this.toNullableNumber(data.lon),
       keywords: data.keywords ?? null,
       review_count: data.review_count ?? 0,
       total_score: data.total_score ?? 0,
+      sentiment_score: (data as any).sentiment_score ?? 0, // ✅ 추가
       naver_score: data.naver_score ?? 0,
       preview: data.preview ?? null,
       url: data.url ?? null,
@@ -36,7 +36,6 @@ export class RestaurantService {
     return this.restaurantRepo.findOne({ where: { name } });
   }
 
-  // 파일명 등에서 레스토랑 자동 생성할 때 사용 (필요 시)
   async getOrCreateRestaurantByName(name: string): Promise<Restaurant> {
     let restaurant = await this.findByName(name);
     if (restaurant) return restaurant;
@@ -50,17 +49,12 @@ export class RestaurantService {
       keywords: [],
       review_count: 0,
       total_score: 0,
+      sentiment_score: 0, // ✅ 추가
     });
 
     return this.restaurantRepo.save(restaurant);
   }
 
-  /** CSV 파일을 읽어 일괄 insert
-   * 예상 헤더(권장):
-   *  name,address,lat,lon,keywords,preview,naver_score,url,review,review_count
-   * - lat/lon: 십진수 (예: 35.244, 129.091)
-   * - keywords: '["국밥","돼지국밥"]' 또는 '국밥, 돼지국밥'
-   */
   async uploadCsv(filePath: string): Promise<{
     inserted: number;
     skipped: number;
@@ -77,11 +71,8 @@ export class RestaurantService {
     const normalizeNumber = (value: unknown): number => {
       if (value === null || value === undefined) return NaN;
       let s = String(value).trim();
-      // 1,234.56 또는 1,234 형태 쉼표 제거
       if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, "");
-      // 12,34 → 12.34 같은 유럽형 소수점
       else if (/^\d+,\d+$/.test(s)) s = s.replace(",", ".");
-      // 숫자/부호/지수만 남김
       s = s.replace(/[^0-9.\-+eE]/g, "");
       const n = Number(s);
       return Number.isFinite(n) ? n : NaN;
@@ -91,18 +82,13 @@ export class RestaurantService {
       if (raw === null || raw === undefined) return null;
       const s = String(raw).trim();
       if (!s) return null;
-      // JSON 배열형 시도
       try {
         const parsed = JSON.parse(s);
         if (Array.isArray(parsed)) {
           return parsed.map((v) => String(v).trim()).filter(Boolean);
         }
       } catch {
-        // 콤마 구분형 시도
-        const parts = s
-          .split(",")
-          .map((v) => v.trim())
-          .filter(Boolean);
+        const parts = s.split(",").map((v) => v.trim()).filter(Boolean);
         return parts.length > 0 ? parts : null;
       }
       return null;
@@ -135,6 +121,7 @@ export class RestaurantService {
         naverscore: "naver_score",
         preview: "preview",
         keywords: "keywords",
+        sentiment_score: "sentiment_score", // ✅ 추가
       };
 
       return aliasMap[h] ?? h;
@@ -158,47 +145,37 @@ export class RestaurantService {
               return;
             }
 
-            const address = String(row["address"] ?? "").trim();
-
-            // lat/lon → 숫자 변환 후 NaN이면 null로 처리
             const latRaw = normalizeNumber(row["lat"]);
             const lonRaw = normalizeNumber(row["lon"]);
             const lat = Number.isFinite(latRaw) ? latRaw : null;
             const lon = Number.isFinite(lonRaw) ? lonRaw : null;
 
-            const preview =
-              row["preview"] !== undefined && row["preview"] !== null
-                ? String(row["preview"]).trim()
-                : undefined;
-            const url =
-              row["url"] !== undefined && row["url"] !== null
-                ? String(row["url"]).trim()
-                : undefined;
-            const review =
-              row["review"] !== undefined && row["review"] !== null
-                ? String(row["review"]).trim()
-                : undefined;
-
             const review_countRaw = normalizeNumber(row["review_count"]);
             const naver_scoreRaw = normalizeNumber(row["naver_score"]);
+            const sentiment_scoreRaw = normalizeNumber(row["sentiment_score"]);
+
             const review_count = Number.isFinite(review_countRaw) ? review_countRaw : 0;
             const naver_score = Number.isFinite(naver_scoreRaw) ? naver_scoreRaw : 0;
+            const sentiment_score = Number.isFinite(sentiment_scoreRaw)
+              ? sentiment_scoreRaw
+              : 0;
 
-            const keywords = toKeywordsArray(row["keywords"]); // JSON 배열 또는 콤마 구분 지원
+            const keywords = toKeywordsArray(row["keywords"]);
 
             rows.push({
               name,
-              address,
+              address: String(row["address"] ?? "").trim(),
               lat,
               lon,
-              preview,
-              url,
-              review,
+              preview: row["preview"] ?? null,
+              url: row["url"] ?? null,
+              review: row["review"] ?? null,
               review_count,
               total_score: 0,
+              sentiment_score, // ✅ 추가
               naver_score,
               keywords: keywords ?? undefined,
-            } as CreateRestaurantDto);
+            } as CreateRestaurantDto & { sentiment_score?: number });
           } catch (e) {
             skipped++;
             this.logger.error(
@@ -228,12 +205,6 @@ export class RestaurantService {
         lat: this.toNullableNumber(dto.lat),
         lon: this.toNullableNumber(dto.lon),
         keywords: dto.keywords ?? null,
-        review_count: dto.review_count ?? 0,
-        total_score: dto.total_score ?? 0,
-        naver_score: dto.naver_score ?? 0,
-        preview: dto.preview ?? null,
-        url: dto.url ?? null,
-        review: dto.review ?? null,
       }),
     );
 
@@ -255,7 +226,6 @@ export class RestaurantService {
     };
   }
 
-  // ----------------- 내부 유틸 -----------------
   private toNullableNumber(n: any): number | null {
     if (n === null || n === undefined) return null;
     const v = Number(n);
