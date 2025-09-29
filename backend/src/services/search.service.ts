@@ -37,47 +37,47 @@ export class SearchService implements OnModuleInit {
     const { keyword, userPosition, range } = dto;
 
     // -------------------------
-    // 1. 키워드 추출
+    // 1. 키워드 추출 + 병합
     // -------------------------
     let extractedKeywords: string[] = [];
 
+    // 클라이언트가 직접 넘긴 keywords 반영
     if (dto.keywords && dto.keywords.length > 0) {
       this.logger.log(`📌 키워드 배열 입력 받음: ${JSON.stringify(dto.keywords)}`);
-
-      const knownKeywords: string[] = [];
-      const unknownKeywords: string[] = [];
-
-      for (const k of dto.keywords) {
-        if (this.keywordMapService.getRestaurantIdsByKeyword(k).length > 0) {
-          knownKeywords.push(k);
-        } else {
-          unknownKeywords.push(k);
-        }
-      }
-
-      let expandedKeywords: string[] = [];
-      if (unknownKeywords.length > 0) {
-        this.logger.log(`🤖 GPT 호출 필요: ${JSON.stringify(unknownKeywords)}`);
-        const gptResults = await this.gptService.extractKeywords(
-          unknownKeywords.join(", "),
-        );
-        expandedKeywords = gptResults.filter(
-          (k) => this.keywordMapService.getRestaurantIdsByKeyword(k).length > 0,
-        );
-        this.logger.log(
-          `🔁 GPT 유사어 중 사용 가능한 키워드: ${JSON.stringify(expandedKeywords)}`,
-        );
-      }
-
-      extractedKeywords = [...knownKeywords, ...expandedKeywords];
-    } else if (keyword) {
-      extractedKeywords = await this.gptService.extractKeywords(keyword);
-      this.logger.log(
-        `🤖 GPT 문장 기반 키워드 추출: ${JSON.stringify(extractedKeywords)}`,
-      );
+      extractedKeywords.push(...dto.keywords);
     }
 
-    if (!extractedKeywords || extractedKeywords.length === 0) {
+    // GPT 기반 추출
+    if (keyword) {
+      const gptResults = await this.gptService.extractKeywords(keyword);
+      this.logger.log(`🤖 GPT 문장 기반 키워드 추출: ${JSON.stringify(gptResults)}`);
+      extractedKeywords.push(...gptResults);
+    }
+
+    // 토큰 분리 (문장에서 띄어쓰기 기반 키워드 추가)
+    if (keyword) {
+      const tokens = keyword
+        .split(/[\s,]+/)
+        .map((s) => s.replace(/[^\p{L}\p{N}]/gu, ""))
+        .filter((s) => s.length >= 2);
+      extractedKeywords.push(...tokens);
+    }
+
+    // 동의어 확장
+    const SYNONYMS: Record<string, string[]> = {
+      "국물": ["국밥", "찌개", "탕", "라멘", "라면", "우동", "칼국수", "해장국", "곰탕", "설렁탕"],
+      "삼겹살": ["고기", "돼지고기", "바베큐", "숯불", "구이", "생삼겹", "항정살"],
+      "카페": ["커피", "디저트", "브런치"],
+    };
+
+    const expanded: string[] = [];
+    extractedKeywords.forEach((k) => {
+      if (SYNONYMS[k]) expanded.push(...SYNONYMS[k]);
+    });
+
+    const kwList = [...new Set([...extractedKeywords, ...expanded])];
+
+    if (!kwList.length) {
       return {
         meta: { query: { keyword, userPosition, range }, resultCount: 0 },
         data: [],
@@ -89,7 +89,7 @@ export class SearchService implements OnModuleInit {
     // 2. 후보 식당 수집
     // -------------------------
     const restaurantIdSet = new Set<number>();
-    for (const kw of extractedKeywords) {
+    for (const kw of kwList) {
       const ids = this.keywordMapService.getRestaurantIdsByKeyword(kw);
       ids.forEach((id) => restaurantIdSet.add(id));
     }
@@ -101,31 +101,45 @@ export class SearchService implements OnModuleInit {
       candidates = await this.restaurantRepo.find({ where: { id: In(idList) } });
     }
 
-    // ✅ fallback: jsonb → text 캐스팅 + name/address/preview 포함
-    if (candidates.length === 0 && keyword) {
-      candidates = await this.restaurantRepo
-        .createQueryBuilder("r")
-        .where(
-          `r.name ILIKE :kw
-           OR r.address ILIKE :kw
-           OR r.preview ILIKE :kw
-           OR r.keywords::text ILIKE :kw`,
-          { kw: `%${keyword}%` },
-        )
-        .getMany();
+    // ✅ Fallback LIKE — 후보 없거나 거리 필터 후 0건일 때 실행
+    if (candidates.length === 0) {
+      const likeParts = new Map<number, Restaurant>();
+
+      // (a) 원문 전체
+      if (keyword) {
+        const q = `%${keyword}%`;
+        const hit = await this.restaurantRepo.createQueryBuilder("r")
+          .where("r.name ILIKE :q", { q })
+          .orWhere("r.address ILIKE :q", { q })
+          .orWhere("r.preview ILIKE :q", { q })
+          .orWhere("CAST(r.keywords AS TEXT) ILIKE :q", { q })
+          .getMany();
+        hit.forEach((r) => likeParts.set(r.id, r));
+      }
+
+      // (b) 병합된 키워드 각각
+      for (const k of kwList) {
+        const qk = `%${k}%`;
+        const hit = await this.restaurantRepo.createQueryBuilder("r")
+          .where("r.name ILIKE :qk", { qk })
+          .orWhere("r.address ILIKE :qk", { qk })
+          .orWhere("r.preview ILIKE :qk", { qk })
+          .orWhere("CAST(r.keywords AS TEXT) ILIKE :qk", { qk })
+          .getMany();
+        hit.forEach((r) => likeParts.set(r.id, r));
+      }
+
+      candidates = [...likeParts.values()];
     }
 
     // -------------------------
     // 3. 스코어 계산
     // -------------------------
-    const needles = extractedKeywords;
+    const needles = kwList;
 
     let enriched = candidates.map((r) => {
       const rKeywords = this.safeParseKeywords((r as any).keywords);
-      const { score: matchScore, matched } = this.calcMatchScore(
-        rKeywords,
-        needles,
-      );
+      const { score: matchScore, matched } = this.calcMatchScore(rKeywords, needles);
 
       const totalScore = (r as any).total_score ?? 0;
       const reviewCount = (r as any).review_count ?? 0;
@@ -196,9 +210,7 @@ export class SearchService implements OnModuleInit {
           finalScore: e.finalScore,
           marketUrl:
             r.lat && r.lon
-              ? `https://map.kakao.com/link/to/${encodeURIComponent(
-                  (r as any).name,
-                )},${r.lat},${r.lon}`
+              ? `https://map.kakao.com/link/to/${encodeURIComponent((r as any).name)},${r.lat},${r.lon}`
               : undefined,
           relatedKeyword: this.safeParseKeywords((r as any).keywords),
           keywordsMatched: e.keywordsMatched,
@@ -247,20 +259,13 @@ export class SearchService implements OnModuleInit {
     return [];
   }
 
-  private calcMatchScore(
-    restaurantKeywords: string[],
-    needleKeywords: string[],
-  ) {
+  private calcMatchScore(restaurantKeywords: string[], needleKeywords: string[]) {
     const rset = new Set(restaurantKeywords.map((k) => k.trim()));
     let score = 0;
     const matched: string[] = [];
     for (const kw of needleKeywords) {
       const k = kw.trim();
-      const hit =
-        rset.has(k) ||
-        Array.from(rset).some(
-          (rk) => rk.includes(k) || k.includes(rk),
-        );
+      const hit = rset.has(k) || Array.from(rset).some((rk) => rk.includes(k) || k.includes(rk));
       if (hit) {
         score += 1;
         matched.push(k);
