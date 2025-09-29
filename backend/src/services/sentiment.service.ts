@@ -3,19 +3,11 @@ import { HttpService } from '@nestjs/axios';
 
 // ✅ 분석 결과 타입
 export interface SentimentResult {
-  sentiment: string;         // 예: "Positive"
-  score: number;             // 예: 78
-  emoji: string;             // 예: 😊
-  percent: number;           // 예: 78
-  raw: {
-    top_label: string;
-    top_prob: number;
-    keywords?: string[];
-    ui?: {
-      emoji: string;
-      percent: number;
-    };
-  };
+  sentiment: string; // 예: "Positive"
+  score: number;     // 예: 78
+  emoji: string;     // 예: 😊
+  percent: number;   // 예: 78
+  raw: any;          // 전체 원본 응답 저장
 }
 
 @Injectable()
@@ -25,6 +17,35 @@ export class SentimentService {
   private get apiUrl(): string {
     return process.env.SENTIMENT_API_URL ?? 'http://localhost:8001';
   }
+
+  // ✅ 라벨-점수 매핑 (확률 가중합 기반 계산용)
+  private readonly labelToBaseScore: Record<string, { sentiment: string; base: number }> = {
+    // 긍정 계열
+    '기쁨(행복한)': { sentiment: 'Positive', base: 80 },
+    '고마운': { sentiment: 'Positive', base: 70 },
+    '즐거운(신나는)': { sentiment: 'Positive', base: 75 },
+    '설레는(기대하는)': { sentiment: 'Positive', base: 85 },
+    '사랑하는': { sentiment: 'Positive', base: 90 },
+
+    // 부정 계열
+    '짜증남': { sentiment: 'Negative', base: 30 },
+    '슬픔(우울한)': { sentiment: 'Negative', base: 25 },
+    '걱정스러운(불안한)': { sentiment: 'Negative', base: 35 },
+
+    // 중립/애매
+    '일상적인': { sentiment: 'Neutral', base: 50 },
+    '생각이 많은': { sentiment: 'Neutral', base: 55 },
+
+    // 영어 fallback (감성서버 영문 라벨 들어올 때)
+    Positive: { sentiment: 'Positive', base: 70 },
+
+    // Fallback (분포 계산용 기본 축)
+    very_neg: { sentiment: 'Very Negative', base: 0 },
+    neg: { sentiment: 'Negative', base: 25 },
+    neu: { sentiment: 'Neutral', base: 50 },
+    pos: { sentiment: 'Positive', base: 75 },
+    very_pos: { sentiment: 'Very Positive', base: 100 },
+  };
 
   // ✅ 감성 분석 요청
   async analyze(
@@ -42,53 +63,39 @@ export class SentimentService {
           source,
           user_id: userId,
         },
-        { headers: { 'Content-Type': 'application/json' } }
+        { headers: { 'Content-Type': 'application/json' } },
       );
 
       const data = response.data;
 
-      if (!data?.top_label || typeof data.top_prob !== 'number') {
+      // ✅ 확률 분포 기반 점수 계산
+      let score = 0;
+      if (data?.probs && typeof data.probs === 'object') {
+        // probs 전체 가중합 계산
+        for (const [label, prob] of Object.entries<number>(data.probs)) {
+          const mapped = this.labelToBaseScore[label] ?? { sentiment: 'Neutral', base: 50 };
+          score += prob * mapped.base;
+        }
+        score = Math.round(score);
+      } else if (data?.top_label && typeof data.top_prob === 'number') {
+        // fallback: top_label만 있을 때 기존 방식
+        const mapped = this.labelToBaseScore[data.top_label] ?? { sentiment: 'Neutral', base: 50 };
+        score = Math.round(mapped.base * data.top_prob);
+      } else {
         throw new Error('FastAPI 감성 분석 결과가 올바르지 않습니다.');
       }
 
-      // ✅ 라벨-점수 매핑 (확장: 감정 레이블 대응)
-      const labelToBaseScore: Record<string, { sentiment: string; base: number }> = {
-    // 긍정 계열
-    '기쁨(행복한)': { sentiment: 'Positive', base: 80 },
-    '즐거운(신나는)': { sentiment: 'Positive', base: 75 },
+      // ✅ 대표 라벨 (top_label 그대로 보여줌)
+      const topLabel = data.top_label ?? 'Unknown';
+      const mapped = this.labelToBaseScore[topLabel] ?? { sentiment: 'Unknown', base: 50 };
 
-    // 부정 계열
-    '짜증남': { sentiment: 'Negative', base: 30 },
-    '슬픔(우울한)': { sentiment: 'Negative', base: 25 },
-
-    // 중립/애매
-    '일상적인': { sentiment: 'Neutral', base: 50 },
-    '생각이 많은': { sentiment: 'Neutral', base: 55 },
-
-    // Fallback
-    very_neg: { sentiment: 'Very Negative', base: 10 },
-    neg: { sentiment: 'Negative', base: 30 },
-    neu: { sentiment: 'Neutral', base: 50 },
-    pos: { sentiment: 'Positive', base: 70 },
-    very_pos: { sentiment: 'Very Positive', base: 90 },
-  };
-
-
-      const mapped = labelToBaseScore[data.top_label] ?? {
-        sentiment: 'Unknown',
-        base: 50,
-      };
-
-      // ✅ 최종 점수 = base × 확률
-      const adjustedScore = Math.round(mapped.base * data.top_prob);
-
-      // ✅ UI는 "보여주기 용도"만 활용 (DB 점수에는 영향 X)
-      const percent = Math.round(data.top_prob * 100);
+      // ✅ UI
+      const percent = data.ui?.percent ?? Math.round(data.top_prob * 100) ?? 0;
       const emoji = data.ui?.emoji ?? this.getEmojiFromSentiment(mapped.sentiment);
 
       return {
-        sentiment: mapped.sentiment,
-        score: Math.min(100, Math.max(0, adjustedScore)), // 0~100 클램핑
+        sentiment: topLabel,
+        score: Math.min(100, Math.max(0, score)), // 0~100 클램핑
         percent,
         emoji,
         raw: data,
@@ -100,10 +107,7 @@ export class SentimentService {
         score: 0,
         emoji: '❌',
         percent: 0,
-        raw: {
-          top_label: 'error',
-          top_prob: 0,
-        },
+        raw: { error: true },
       };
     }
   }
@@ -113,19 +117,25 @@ export class SentimentService {
     switch (sentiment) {
       case 'Very Positive':
       case 'Joy':
+      case '기쁨(행복한)':
+      case '즐거운(신나는)':
+      case '고마운':
+      case '설레는(기대하는)':
+      case '사랑하는':
         return '😄';
       case 'Positive':
         return '😊';
       case 'Neutral':
+      case '일상적인':
+      case '생각이 많은':
         return '😐';
       case 'Negative':
-      case 'Sadness':
+      case '슬픔(우울한)':
+      case '짜증남':
+      case '걱정스러운(불안한)':
         return '☹️';
       case 'Very Negative':
-      case 'Anger':
         return '😡';
-      case 'Surprise':
-        return '😲';
       default:
         return '❓';
     }
@@ -137,7 +147,7 @@ export class SentimentService {
       const response = await this.httpService.axiosRef.post(
         `${this.apiUrl}/expand_keywords`,
         { keyword },
-        { headers: { 'Content-Type': 'application/json' } }
+        { headers: { 'Content-Type': 'application/json' } },
       );
 
       const keywords = response.data?.keywords;
