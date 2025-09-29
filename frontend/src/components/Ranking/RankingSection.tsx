@@ -238,7 +238,7 @@ function LazyRankRow({
                 <Dot>·</Dot>
                 <span>리뷰 {item.reviewCount.toLocaleString()}개</span>
                 <Dot>·</Dot>
-                <span>총점 {item.totalScore.toFixed(1)}</span>
+                <span>총점 {item.finalScore.toFixed(1)}</span>
               </Meta>
               <Preview>{item.preview || ''}</Preview>
               <Keywords>

@@ -195,8 +195,8 @@ export function TopBar({
             value={radius}
             onChange={(e) => setRadius(Number(e.target.value))}
           >
-            <option value="500">500m</option>
             <option value="1000">1km</option>
+            <option value="5000">5km</option>
           </RadiusSelect>
         </LeftControls>
         <SearchInput

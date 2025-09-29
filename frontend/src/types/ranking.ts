@@ -10,7 +10,7 @@ export type RankingItem = {
   totalScore: number
   reviewCount: number
   sentimentScore?: number
-  finalScore?: number
+  finalScore: number
   naverScore: number | null
   coordinates: { lat: number | null; lon: number | null }
   distanceKm?: number | null
