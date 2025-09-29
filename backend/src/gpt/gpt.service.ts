@@ -103,8 +103,12 @@ export class GptService {
       );
     }
 
+    
     // 4. 정규화 + 중복 제거
-    keywords = this.normalizeKeywordList(keywords).slice(0, this.MAX_RETURN);
+    keywords = this.normalizeKeywordList([
+      normalized,   // 원래 입력 보존
+      ...keywords,  // GPT 또는 fallback 결과
+    ]).slice(0, this.MAX_RETURN);
 
     // 5. 캐시에 저장
     try {
