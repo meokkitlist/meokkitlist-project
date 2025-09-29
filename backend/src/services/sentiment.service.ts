@@ -10,7 +10,7 @@ export interface SentimentResult {
   raw: {
     top_label: string;
     top_prob: number;
-    keywords?: string[];     // ✅ 키워드 포함 (FastAPI 응답에서 받을 경우)
+    keywords?: string[];
     ui?: {
       emoji: string;
       percent: number;
@@ -23,7 +23,6 @@ export class SentimentService {
   constructor(private readonly httpService: HttpService) {}
 
   private get apiUrl(): string {
-    // ✅ 환경변수에서 가져오고, 없으면 로컬 기본값 사용
     return process.env.SENTIMENT_API_URL ?? 'http://localhost:8001';
   }
 
@@ -52,27 +51,44 @@ export class SentimentService {
         throw new Error('FastAPI 감성 분석 결과가 올바르지 않습니다.');
       }
 
-      // ✅ 라벨-점수 매핑
+      // ✅ 라벨-점수 매핑 (확장: 감정 레이블 대응)
       const labelToBaseScore: Record<string, { sentiment: string; base: number }> = {
-        very_neg: { sentiment: 'Very Negative', base: 10 },
-        neg: { sentiment: 'Negative', base: 30 },
-        neu: { sentiment: 'Neutral', base: 50 },
-        pos: { sentiment: 'Positive', base: 70 },
-        very_pos: { sentiment: 'Very Positive', base: 90 },
-      };
+    // 긍정 계열
+    '기쁨(행복한)': { sentiment: 'Positive', base: 80 },
+    '즐거운(신나는)': { sentiment: 'Positive', base: 75 },
+
+    // 부정 계열
+    '짜증남': { sentiment: 'Negative', base: 30 },
+    '슬픔(우울한)': { sentiment: 'Negative', base: 25 },
+
+    // 중립/애매
+    '일상적인': { sentiment: 'Neutral', base: 50 },
+    '생각이 많은': { sentiment: 'Neutral', base: 55 },
+
+    // Fallback
+    very_neg: { sentiment: 'Very Negative', base: 10 },
+    neg: { sentiment: 'Negative', base: 30 },
+    neu: { sentiment: 'Neutral', base: 50 },
+    pos: { sentiment: 'Positive', base: 70 },
+    very_pos: { sentiment: 'Very Positive', base: 90 },
+  };
+
 
       const mapped = labelToBaseScore[data.top_label] ?? {
         sentiment: 'Unknown',
         base: 50,
       };
 
+      // ✅ 최종 점수 = base × 확률
       const adjustedScore = Math.round(mapped.base * data.top_prob);
-      const percent = data.ui?.percent ?? Math.round(data.top_prob * 100);
-      const emoji = data.ui?.emoji ?? '❓';
+
+      // ✅ UI는 "보여주기 용도"만 활용 (DB 점수에는 영향 X)
+      const percent = Math.round(data.top_prob * 100);
+      const emoji = data.ui?.emoji ?? this.getEmojiFromSentiment(mapped.sentiment);
 
       return {
         sentiment: mapped.sentiment,
-        score: Math.min(100, Math.max(0, adjustedScore)),
+        score: Math.min(100, Math.max(0, adjustedScore)), // 0~100 클램핑
         percent,
         emoji,
         raw: data,
@@ -92,7 +108,30 @@ export class SentimentService {
     }
   }
 
-  // ✅ 키워드 확장 (선택 기능)
+  // ✅ 간단 이모지 매퍼
+  private getEmojiFromSentiment(sentiment: string): string {
+    switch (sentiment) {
+      case 'Very Positive':
+      case 'Joy':
+        return '😄';
+      case 'Positive':
+        return '😊';
+      case 'Neutral':
+        return '😐';
+      case 'Negative':
+      case 'Sadness':
+        return '☹️';
+      case 'Very Negative':
+      case 'Anger':
+        return '😡';
+      case 'Surprise':
+        return '😲';
+      default:
+        return '❓';
+    }
+  }
+
+  // ✅ 키워드 확장
   async expandKeywords(keyword: string): Promise<string[]> {
     try {
       const response = await this.httpService.axiosRef.post(
@@ -102,15 +141,13 @@ export class SentimentService {
       );
 
       const keywords = response.data?.keywords;
-
       if (!Array.isArray(keywords)) {
         throw new Error('FastAPI로부터 키워드 배열을 받지 못했습니다.');
       }
-
       return keywords;
     } catch (error: any) {
       console.error('❌ 키워드 확장 실패:', error?.message || error);
-      return [keyword]; // fallback: 단일 키워드로
+      return [keyword];
     }
   }
 }
