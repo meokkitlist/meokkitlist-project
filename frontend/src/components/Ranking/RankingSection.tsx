@@ -261,9 +261,13 @@ function LazyRankRow({
                       (() => {
                         return (
                           <SentimentBadge>
-                            <span className="emoji">{senti.emoji || '🔍'}</span>
+                            <span className="emoji">
+                              {senti.emoji || senti.raw.ui?.emoji || '🔍'}
+                            </span>
                             <span className="label">{senti.sentiment}</span>
-                            <span className="percent">{senti.percent}%</span>
+                            <span className="percent">
+                              {senti.percent || senti.raw.ui?.percent || 0}%
+                            </span>
                           </SentimentBadge>
                         )
                       })()}
