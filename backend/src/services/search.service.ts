@@ -1,4 +1,3 @@
-// 상단 import 동일
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
@@ -94,10 +93,8 @@ export class SearchService implements OnModuleInit {
       candidates = await this.restaurantRepo.find({ where: { id: In(idList) } });
     }
 
-    // Fallback 검색 로직 동일...
-
     // -------------------------
-    // 3. 스코어 계산
+    // 3. 스코어 계산 + 거리 로그 추가
     // -------------------------
     const needles = kwList;
 
@@ -116,6 +113,11 @@ export class SearchService implements OnModuleInit {
           { lat: userPosition.lat, lon: userPosition.lon },
           { lat: Number(r.lat), lon: Number(r.lon) },
         );
+        this.logger.log(`📍 거리 계산 [${r.name}] = ${distanceKm.toFixed(2)} km (range=${range}m)`);
+      } else {
+        this.logger.warn(
+          `⚠️ 거리 계산 실패 [${r.name}] 좌표 없음 user=${JSON.stringify(userPosition)}, restaurant=(${r.lat}, ${r.lon})`
+        );
       }
 
       const finalScore = this.calcFinalScore({
@@ -125,7 +127,7 @@ export class SearchService implements OnModuleInit {
         sentimentScore,
       });
 
-      // 디버그 로그
+      // 매칭 로그
       this.logger.log(`🔍 [${r.name}] matchScore=${matchScore}, matched=${matched.join(",")}`);
 
       return {
@@ -233,7 +235,7 @@ export class SearchService implements OnModuleInit {
     for (const kw of needleKeywords) {
       const k = kw.trim().toLowerCase();
 
-      // 부분 일치도 허용
+      // 부분 일치 허용
       const hit = Array.from(rset).some(
         (rk) =>
           rk === k ||
