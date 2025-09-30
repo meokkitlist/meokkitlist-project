@@ -24,12 +24,12 @@ export class KeywordMapService {
       if (!restaurant.keywords || (restaurant.keywords as any).length === 0)
         continue;
 
-      const keywordList: string[] = this.safeParseKeywords(
-        restaurant.keywords,
-      );
+      const keywordList: string[] = this.safeParseKeywords(restaurant.keywords);
 
       for (const keyword of keywordList) {
         const normalized = this.normalizeKeyword(keyword);
+        if (!normalized) continue;
+
         if (!newMap.has(normalized)) {
           newMap.set(normalized, []);
         }
@@ -97,8 +97,10 @@ export class KeywordMapService {
     return [];
   }
 
-  // ✅ 핵심: 키워드 정규화 함수
+  // ✅ 핵심: 키워드 정규화 함수 (수정)
   private normalizeKeyword(k: string): string {
-    return k.trim().toLowerCase().replace(/\s+/g, "");
+    // 기존: return k.trim().toLowerCase().replace(/\s+/g, "");
+    // 수정: 띄어쓰기는 유지, 소문자만
+    return k.trim().toLowerCase();
   }
 }

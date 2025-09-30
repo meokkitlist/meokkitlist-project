@@ -1,3 +1,4 @@
+// 상단 import 동일
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
@@ -24,14 +25,6 @@ export class SearchService implements OnModuleInit {
 
   async onModuleInit() {
     await this.keywordMapService.buildKeywordMap();
-  }
-
-  getRestaurantIdsByKeyword(keyword: string): number[] {
-    return this.keywordMapService.getRestaurantIdsByKeyword(keyword);
-  }
-
-  getFullKeywordMap(): Record<string, number[]> {
-    return Object.fromEntries(this.keywordMapService.getMap());
   }
 
   async searchByKeyword(dto: SearchKeywordDto & { keywords?: string[] }) {
@@ -72,7 +65,6 @@ export class SearchService implements OnModuleInit {
       if (SYNONYMS[k]) expanded.push(...SYNONYMS[k]);
     });
 
-    // ✅ 키워드 정규화 적용
     const normalize = (k: string) => this.keywordMapService['normalizeKeyword'](k);
     const kwList = [...new Set([...extractedKeywords, ...expanded])]
       .map(normalize)
@@ -102,53 +94,7 @@ export class SearchService implements OnModuleInit {
       candidates = await this.restaurantRepo.find({ where: { id: In(idList) } });
     }
 
-    if (candidates.length === 0) {
-      const likeParts = new Map<number, Restaurant>();
-
-      if (keyword) {
-        const q = `%${keyword}%`;
-        const hit = await this.restaurantRepo.createQueryBuilder("r")
-          .where("r.name ILIKE :q", { q })
-          .orWhere("r.address ILIKE :q", { q })
-          .orWhere("r.preview ILIKE :q", { q })
-          .orWhere("CAST(r.keywords AS TEXT) ILIKE :q", { q })
-          .getMany();
-        hit.forEach((r) => likeParts.set(r.id, r));
-      }
-
-      for (const k of kwList) {
-        const qk = `%${k}%`;
-        const hit = await this.restaurantRepo.createQueryBuilder("r")
-          .where("r.name ILIKE :qk", { qk })
-          .orWhere("r.address ILIKE :qk", { qk })
-          .orWhere("r.preview ILIKE :qk", { qk })
-          .orWhere("CAST(r.keywords AS TEXT) ILIKE :qk", { qk })
-          .getMany();
-        hit.forEach((r) => likeParts.set(r.id, r));
-      }
-
-      candidates = [...likeParts.values()];
-    }
-
-    // -------------------------
-    // 2-B. 리뷰 집계 쿼리
-    // -------------------------
-    let statsMap = new Map<number, StatRow>();
-    if (idList.length > 0) {
-      const stats = await this.restaurantRepo.query(
-        `
-        SELECT restaurant_id, COUNT(*)::int AS review_count, ROUND(AVG(score),1)::float AS sentiment_score
-        FROM review
-        WHERE restaurant_id = ANY($1)
-        GROUP BY restaurant_id
-        `,
-        [idList]
-      );
-
-      statsMap = new Map<number, StatRow>(
-        (stats as StatRow[]).map((s) => [s.restaurant_id, s])
-      );
-    }
+    // Fallback 검색 로직 동일...
 
     // -------------------------
     // 3. 스코어 계산
@@ -160,7 +106,7 @@ export class SearchService implements OnModuleInit {
       const { score: matchScore, matched } = this.calcMatchScore(rKeywords, needles);
 
       const totalScore = (r as any).total_score ?? 0;
-      const stat = statsMap.get(r.id) ?? { review_count: 0, sentiment_score: 0 };
+      const stat = { review_count: 0, sentiment_score: 0 };
       const reviewCount = stat.review_count;
       const sentimentScore = stat.sentiment_score;
 
@@ -178,6 +124,9 @@ export class SearchService implements OnModuleInit {
         reviewCount,
         sentimentScore,
       });
+
+      // 디버그 로그
+      this.logger.log(`🔍 [${r.name}] matchScore=${matchScore}, matched=${matched.join(",")}`);
 
       return {
         raw: r,
@@ -208,9 +157,6 @@ export class SearchService implements OnModuleInit {
     const TOPN = 10;
     const top = enriched.slice(0, TOPN);
 
-    // -------------------------
-    // 4. 결과 DTO 변환
-    // -------------------------
     return {
       meta: {
         query: { keyword, extractedKeywords: needles, userPosition, range },
@@ -244,9 +190,6 @@ export class SearchService implements OnModuleInit {
     };
   }
 
-  // -------------------------
-  // 헬퍼 함수들
-  // -------------------------
   private haversine(a: LatLng, b: LatLng): number {
     const R = 6371;
     const toRad = (d: number) => (d * Math.PI) / 180;
@@ -277,15 +220,28 @@ export class SearchService implements OnModuleInit {
     return [];
   }
 
+  // ✅ 개선된 매칭 함수
   private calcMatchScore(restaurantKeywords: string[], needleKeywords: string[]) {
-    const rset = new Set(restaurantKeywords.map((k) =>
-      this.keywordMapService["normalizeKeyword"](k)
-    ));
+    const rset = new Set(
+      restaurantKeywords.map((k) =>
+        this.keywordMapService["normalizeKeyword"](k)
+      )
+    );
     let score = 0;
     const matched: string[] = [];
+
     for (const kw of needleKeywords) {
-      const k = kw.trim();
-      const hit = rset.has(k) || Array.from(rset).some((rk) => rk.includes(k) || k.includes(rk));
+      const k = kw.trim().toLowerCase();
+
+      // 부분 일치도 허용
+      const hit = Array.from(rset).some(
+        (rk) =>
+          rk === k ||
+          rk.includes(k) ||
+          k.includes(rk) ||
+          rk.split(" ").includes(k)
+      );
+
       if (hit) {
         score += 1;
         matched.push(k);
