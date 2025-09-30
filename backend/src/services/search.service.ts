@@ -2,7 +2,6 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
 import { Restaurant } from "../entities/restaurant.entity";
-import { Review } from "../entities/review.entity";              // ✅ ADD
 import { SearchKeywordDto } from "../dto/search-keyword.dto";
 import { SearchResultDto } from "../dto/search-result.dto";
 import { GptService } from "../gpt/gpt.service";
@@ -10,6 +9,7 @@ import { KeywordMapService } from "./keyword-map.service";
 import { SCORE_WEIGHTS } from "../config/ranking.config";
 
 type LatLng = { lat: number; lon: number };
+type StatRow = { restaurant_id: number; review_count: number; sentiment_score: number };
 
 @Injectable()
 export class SearchService implements OnModuleInit {
@@ -18,8 +18,6 @@ export class SearchService implements OnModuleInit {
   constructor(
     @InjectRepository(Restaurant)
     private readonly restaurantRepo: Repository<Restaurant>,
-    @InjectRepository(Review)                                   // ✅ ADD
-    private readonly reviewRepo: Repository<Review>,            // ✅ ADD
     private readonly gptService: GptService,
     private readonly keywordMapService: KeywordMapService,
   ) {}
@@ -40,18 +38,18 @@ export class SearchService implements OnModuleInit {
     const { keyword, userPosition, range } = dto;
 
     // -------------------------
-    // 1) 키워드 추출 + 병합
+    // 1. 키워드 추출 + 병합
     // -------------------------
     let extractedKeywords: string[] = [];
 
-    if (dto.keywords?.length) {
-      this.logger.log(`📌 키워드 배열 입력: ${JSON.stringify(dto.keywords)}`);
+    if (dto.keywords && dto.keywords.length > 0) {
+      this.logger.log(`📌 키워드 배열 입력 받음: ${JSON.stringify(dto.keywords)}`);
       extractedKeywords.push(...dto.keywords);
     }
 
     if (keyword) {
       const gptResults = await this.gptService.extractKeywords(keyword);
-      this.logger.log(`🤖 GPT 키워드: ${JSON.stringify(gptResults)}`);
+      this.logger.log(`🤖 GPT 문장 기반 키워드 추출: ${JSON.stringify(gptResults)}`);
       extractedKeywords.push(...gptResults);
     }
 
@@ -68,8 +66,11 @@ export class SearchService implements OnModuleInit {
       "삼겹살": ["고기", "돼지고기", "바베큐", "숯불", "구이", "생삼겹", "항정살"],
       "카페": ["커피", "디저트", "브런치"],
     };
+
     const expanded: string[] = [];
-    extractedKeywords.forEach((k) => { if (SYNONYMS[k]) expanded.push(...SYNONYMS[k]); });
+    extractedKeywords.forEach((k) => {
+      if (SYNONYMS[k]) expanded.push(...SYNONYMS[k]);
+    });
 
     const kwList = [...new Set([...extractedKeywords, ...expanded])];
 
@@ -82,21 +83,23 @@ export class SearchService implements OnModuleInit {
     }
 
     // -------------------------
-    // 2) 후보 식당 수집
+    // 2. 후보 식당 수집
     // -------------------------
-    const idSet = new Set<number>();
-    for (const kw of kwList) this.keywordMapService.getRestaurantIdsByKeyword(kw).forEach((id) => idSet.add(id));
+    const restaurantIdSet = new Set<number>();
+    for (const kw of kwList) {
+      const ids = this.keywordMapService.getRestaurantIdsByKeyword(kw);
+      ids.forEach((id) => restaurantIdSet.add(id));
+    }
 
-    const idList = [...idSet];
+    const idList = [...restaurantIdSet];
     let candidates: Restaurant[] = [];
 
-    if (idList.length) {
+    if (idList.length > 0) {
       candidates = await this.restaurantRepo.find({ where: { id: In(idList) } });
     }
 
-    // ✅ LIKE Fallback
-    if (!candidates.length) {
-      const likeMap = new Map<number, Restaurant>();
+    if (candidates.length === 0) {
+      const likeParts = new Map<number, Restaurant>();
 
       if (keyword) {
         const q = `%${keyword}%`;
@@ -106,7 +109,7 @@ export class SearchService implements OnModuleInit {
           .orWhere("r.preview ILIKE :q", { q })
           .orWhere("CAST(r.keywords AS TEXT) ILIKE :q", { q })
           .getMany();
-        hit.forEach((r) => likeMap.set((r as any).id, r));
+        hit.forEach((r) => likeParts.set(r.id, r));
       }
 
       for (const k of kwList) {
@@ -117,61 +120,51 @@ export class SearchService implements OnModuleInit {
           .orWhere("r.preview ILIKE :qk", { qk })
           .orWhere("CAST(r.keywords AS TEXT) ILIKE :qk", { qk })
           .getMany();
-        hit.forEach((r) => likeMap.set((r as any).id, r));
+        hit.forEach((r) => likeParts.set(r.id, r));
       }
 
-      candidates = [...likeMap.values()];
+      candidates = [...likeParts.values()];
     }
 
     // -------------------------
-    // 2-1) ❗후보 식당에 리뷰 집계 붙이기 (핵심 수정)
+    // 2-B. 리뷰 집계 쿼리
     // -------------------------
-    const candidateIds = candidates.map((r) => Number((r as any).id));
-    const statsMap = new Map<number, { review_count: number; sentiment_score: number }>();
+    let statsMap = new Map<number, StatRow>();
+    if (idList.length > 0) {
+      const stats = await this.restaurantRepo.query(
+        `
+        SELECT restaurant_id, COUNT(*)::int AS review_count, ROUND(AVG(score),1)::float AS sentiment_score
+        FROM review
+        WHERE restaurant_id = ANY($1)
+        GROUP BY restaurant_id
+        `,
+        [idList]
+      );
 
-    if (candidateIds.length) {
-      const stats = await this.reviewRepo
-        .createQueryBuilder("rv")
-        .select("rv.restaurant_id", "restaurant_id")
-        .addSelect("COUNT(*)", "review_count")
-        .addSelect("ROUND(AVG(rv.score), 1)", "sentiment_score")
-        .where("rv.restaurant_id IN (:...ids)", { ids: candidateIds })
-        .andWhere("rv.score IS NOT NULL")
-        .groupBy("rv.restaurant_id")
-        .getRawMany();
-
-      for (const s of stats) {
-        statsMap.set(Number(s.restaurant_id), {
-          review_count: Number(s.review_count),
-          sentiment_score: Number(s.sentiment_score),
-        });
-      }
+      statsMap = new Map<number, StatRow>(
+        (stats as StatRow[]).map((s) => [s.restaurant_id, s])
+      );
     }
 
     // -------------------------
-    // 3) 스코어 계산
+    // 3. 스코어 계산
     // -------------------------
     const needles = kwList;
 
     let enriched = candidates.map((r) => {
-      const id = Number((r as any).id);
       const rKeywords = this.safeParseKeywords((r as any).keywords);
       const { score: matchScore, matched } = this.calcMatchScore(rKeywords, needles);
 
-      // ✅ 우선순위: 집계값 → Restaurant 필드 → 0
-      const agg = statsMap.get(id);
-      const reviewCount =
-        agg?.review_count ?? (Number((r as any).review_count) || 0);
-      const sentimentScore =
-        agg?.sentiment_score ?? (Number((r as any).sentiment_score) || 0);
-
-      const totalScore = Number((r as any).total_score ?? 0);
+      const totalScore = (r as any).total_score ?? 0;
+      const stat = statsMap.get(r.id) ?? { review_count: 0, sentiment_score: 0 };
+      const reviewCount = stat.review_count;
+      const sentimentScore = stat.sentiment_score;
 
       let distanceKm: number | null = null;
-      if (userPosition?.lat && userPosition?.lon && (r as any).lat && (r as any).lon) {
+      if (userPosition?.lat && userPosition?.lon && r.lat && r.lon) {
         distanceKm = this.haversine(
           { lat: userPosition.lat, lon: userPosition.lon },
-          { lat: Number((r as any).lat), lon: Number((r as any).lon) },
+          { lat: Number(r.lat), lon: Number(r.lon) },
         );
       }
 
@@ -194,10 +187,11 @@ export class SearchService implements OnModuleInit {
       };
     });
 
-    // ✅ range(m) 필터 (distanceKm → m 변환)
     if (range && userPosition?.lat && userPosition?.lon) {
       const rangeMeters = Number(range);
-      enriched = enriched.filter((e) => e.distanceKm !== null && e.distanceKm! * 1000 <= rangeMeters);
+      enriched = enriched.filter(
+        (e) => e.distanceKm !== null && e.distanceKm! * 1000 <= rangeMeters,
+      );
     }
 
     enriched.sort((a, b) => {
@@ -211,7 +205,7 @@ export class SearchService implements OnModuleInit {
     const top = enriched.slice(0, TOPN);
 
     // -------------------------
-    // 4) 결과 DTO
+    // 4. 결과 DTO 변환
     // -------------------------
     return {
       meta: {
@@ -225,12 +219,12 @@ export class SearchService implements OnModuleInit {
           name: (r as any).name,
           address: (r as any).address,
           preview: (r as any).preview ?? null,
-          reviewCount: e.reviewCount,            // ✅ 집계 반영
-          sentimentScore: e.sentimentScore,      // ✅ 집계 반영
+          reviewCount: e.reviewCount,
+          sentimentScore: e.sentimentScore,
           finalScore: e.finalScore,
           marketUrl:
-            (r as any).lat && (r as any).lon
-              ? `https://map.kakao.com/link/to/${encodeURIComponent((r as any).name)},${(r as any).lat},${(r as any).lon}`
+            r.lat && r.lon
+              ? `https://map.kakao.com/link/to/${encodeURIComponent((r as any).name)},${r.lat},${r.lon}`
               : undefined,
           relatedKeyword: this.safeParseKeywords((r as any).keywords),
           keywordsMatched: e.keywordsMatched,
@@ -247,7 +241,7 @@ export class SearchService implements OnModuleInit {
   }
 
   // -------------------------
-  // 헬퍼들
+  // 헬퍼 함수들
   // -------------------------
   private haversine(a: LatLng, b: LatLng): number {
     const R = 6371;
@@ -270,7 +264,10 @@ export class SearchService implements OnModuleInit {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? (parsed as string[]) : [];
       } catch {
-        return raw.split(",").map((s) => s.trim()).filter(Boolean);
+        return raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
     }
     return [];
@@ -283,7 +280,10 @@ export class SearchService implements OnModuleInit {
     for (const kw of needleKeywords) {
       const k = kw.trim();
       const hit = rset.has(k) || Array.from(rset).some((rk) => rk.includes(k) || k.includes(rk));
-      if (hit) { score += 1; matched.push(k); }
+      if (hit) {
+        score += 1;
+        matched.push(k);
+      }
     }
     return { score, matched };
   }
