@@ -1,9 +1,10 @@
+// src/services/sentiment.service.ts
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 
 // ✅ 분석 결과 타입
 export interface SentimentResult {
-  sentiment: string; // 예: "Positive"
+  sentiment: string; // 예: "기쁨(행복한)"
   score: number;     // 예: 78
   emoji: string;     // 예: 😊
   percent: number;   // 예: 78
@@ -18,7 +19,7 @@ export class SentimentService {
     return process.env.SENTIMENT_API_URL ?? 'http://localhost:8001';
   }
 
-  // ✅ 라벨-점수 매핑 (확률 가중합 기반 계산용)
+  // ✅ 라벨 → 기본 점수 매핑
   private readonly labelToBaseScore: Record<string, { sentiment: string; base: number }> = {
     // 긍정 계열
     '기쁨(행복한)': { sentiment: 'Positive', base: 80 },
@@ -32,14 +33,14 @@ export class SentimentService {
     '슬픔(우울한)': { sentiment: 'Negative', base: 25 },
     '걱정스러운(불안한)': { sentiment: 'Negative', base: 35 },
 
-    // 중립/애매
+    // 중립 계열
     '일상적인': { sentiment: 'Neutral', base: 50 },
     '생각이 많은': { sentiment: 'Neutral', base: 55 },
 
-    // 영어 fallback (감성서버 영문 라벨 들어올 때)
+    // 영어 fallback
     Positive: { sentiment: 'Positive', base: 70 },
 
-    // Fallback (분포 계산용 기본 축)
+    // Fallback (확률 분포 계산용)
     very_neg: { sentiment: 'Very Negative', base: 0 },
     neg: { sentiment: 'Negative', base: 25 },
     neu: { sentiment: 'Neutral', base: 50 },
@@ -47,7 +48,7 @@ export class SentimentService {
     very_pos: { sentiment: 'Very Positive', base: 100 },
   };
 
-  // ✅ 감성 분석 요청
+  // ✅ 감성 분석 실행
   async analyze(
     text: string,
     restaurantId: string,
@@ -57,45 +58,41 @@ export class SentimentService {
     try {
       const response = await this.httpService.axiosRef.post(
         `${this.apiUrl}/analyze`,
-        {
-          text,
-          restaurant_id: restaurantId,
-          source,
-          user_id: userId,
-        },
+        { text, restaurant_id: restaurantId, source, user_id: userId },
         { headers: { 'Content-Type': 'application/json' } },
       );
 
       const data = response.data;
 
-      // ✅ 확률 분포 기반 점수 계산
+      // ✅ 점수 계산
       let score = 0;
       if (data?.probs && typeof data.probs === 'object') {
-        // probs 전체 가중합 계산
+        // 확률 분포 기반 가중합
         for (const [label, prob] of Object.entries<number>(data.probs)) {
           const mapped = this.labelToBaseScore[label] ?? { sentiment: 'Neutral', base: 50 };
           score += prob * mapped.base;
         }
         score = Math.round(score);
       } else if (data?.top_label && typeof data.top_prob === 'number') {
-        // fallback: top_label만 있을 때 기존 방식
+        // fallback: top_label + top_prob만 있을 때
         const mapped = this.labelToBaseScore[data.top_label] ?? { sentiment: 'Neutral', base: 50 };
         score = Math.round(mapped.base * data.top_prob);
       } else {
         throw new Error('FastAPI 감성 분석 결과가 올바르지 않습니다.');
       }
 
-      // ✅ 대표 라벨 (top_label 그대로 보여줌)
+      // ✅ 대표 라벨
       const topLabel = data.top_label ?? 'Unknown';
-      const mapped = this.labelToBaseScore[topLabel] ?? { sentiment: 'Unknown', base: 50 };
 
-      // ✅ UI
-      const percent = data.ui?.percent ?? Math.round(data.top_prob * 100) ?? 0;
-      const emoji = data.ui?.emoji ?? this.getEmojiFromSentiment(mapped.sentiment);
+      // ✅ 퍼센트 계산 (FastAPI percent 사용 or top_prob 기반)
+      const percent = data.ui?.percent ?? Math.round((data.top_prob ?? 0) * 100);
+
+      // ✅ FastAPI가 내려주는 잘못된 emoji 무시
+      const emoji = this.getEmojiFromSentiment(topLabel);
 
       return {
         sentiment: topLabel,
-        score: Math.min(100, Math.max(0, score)), // 0~100 클램핑
+        score: Math.min(100, Math.max(0, score)), // 0~100 범위 클램핑
         percent,
         emoji,
         raw: data,
@@ -112,7 +109,7 @@ export class SentimentService {
     }
   }
 
-  // ✅ 간단 이모지 매퍼
+  // ✅ 이모지 매퍼
   private getEmojiFromSentiment(sentiment: string): string {
     switch (sentiment) {
       case 'Very Positive':
