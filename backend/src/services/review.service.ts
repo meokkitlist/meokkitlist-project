@@ -1,14 +1,14 @@
-import { Injectable, Logger, BadRequestException } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { Review } from "../entities/review.entity";
-import { Restaurant } from "../entities/restaurant.entity";
-import { SentimentResult, SentimentService } from "./sentiment.service";
-import { KeywordExtractionService } from "./keyword-extraction.service";
-import { parse } from "csv-parse/sync";
-import * as path from "path";
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Review } from '../entities/review.entity';
+import { Restaurant } from '../entities/restaurant.entity';
+import { SentimentResult, SentimentService } from './sentiment.service';
+import { KeywordExtractionService } from './keyword-extraction.service';
+import { parse } from 'csv-parse/sync';
+import * as path from 'path';
 
-type ReviewSource = "user" | "crawl";
+type ReviewSource = 'user' | 'crawl';
 
 interface CreateReviewDto {
   text: string;
@@ -35,17 +35,19 @@ export class ReviewService {
   /**
    * 단일 리뷰 생성
    */
-  async createReview(dto: CreateReviewDto) {
+  async createReview(dto: CreateReviewDto): Promise<Review> {
     const { text, restaurant_id, user_id, source } = dto;
 
     this.logger.log(
       `📝 리뷰 생성 요청 (restaurant_id=${restaurant_id}, user_id=${user_id}, source=${source})`,
     );
 
-    if (!text?.trim())
-      throw new BadRequestException("리뷰 텍스트는 비어 있을 수 없습니다.");
-    if (source !== "user" && source !== "crawl")
+    if (!text?.trim()) {
+      throw new BadRequestException('리뷰 텍스트는 비어 있을 수 없습니다.');
+    }
+    if (source !== 'user' && source !== 'crawl') {
       throw new BadRequestException("source는 'user' 또는 'crawl'이어야 합니다.");
+    }
 
     const restaurantId =
       restaurant_id != null &&
@@ -58,12 +60,12 @@ export class ReviewService {
     try {
       sentimentResult = await this.sentimentService.analyze(
         text,
-        restaurantId ? String(restaurantId) : "unknown",
+        restaurantId ? String(restaurantId) : 'unknown',
         source,
         user_id ?? undefined,
       );
     } catch (error) {
-      this.logger.error("❌ 감성 분석 중 오류:", error);
+      this.logger.error('❌ 감성 분석 중 오류:', error);
     }
 
     // 실패 시 fallback 값
@@ -72,16 +74,16 @@ export class ReviewService {
       restaurant_id: restaurantId,
       user_id: user_id ?? null,
       source,
-      sentiment: sentimentResult?.sentiment ?? "Unknown",
+      sentiment: sentimentResult?.sentiment ?? 'Unknown',
       score: sentimentResult?.score ?? 0,
-      emoji: sentimentResult?.emoji ?? null,
+      emoji: sentimentResult?.emoji ?? null, // DB에는 저장되지만 응답시 무시됨
       percent: sentimentResult?.percent ?? null,
       raw: sentimentResult?.raw ?? null,
     } as Partial<Review>);
 
     const savedReview = await this.reviewRepo.save(review);
 
-    // 키워드 추출
+    // ✅ 키워드 추출
     if (restaurantId) {
       try {
         await this.keywordExtractionService.runExtractorScript(restaurantId);
@@ -96,7 +98,7 @@ export class ReviewService {
       }
     }
 
-    return { message: "리뷰 분석 및 저장 완료", data: savedReview };
+    return savedReview; // ✅ 엔티티만 반환
   }
 
   /**
@@ -104,23 +106,23 @@ export class ReviewService {
    * - 파일명: 리뷰_<식당명>_YYYYMMDD.csv
    * - restaurant_id 없으면: 파일명에서 식당명 추출 후 DB 매핑
    */
-  async uploadCsv(buffer: Buffer, filename: string, source: ReviewSource = "crawl") {
+  async uploadCsv(buffer: Buffer, filename: string, source: ReviewSource = 'crawl') {
     const rows: any[] = parse(buffer, {
       columns: true,
       skip_empty_lines: true,
     });
 
     // 파일명에서 식당 이름 추출
-    const baseName = path.basename(filename, ".csv");
-    const storeName = baseName.replace(/^리뷰_/, "").replace(/_\d+$/, "").trim();
+    const baseName = path.basename(filename, '.csv');
+    const storeName = baseName.replace(/^리뷰_/, '').replace(/_\d+$/, '').trim();
 
     let restaurant = await this.restaurantRepo.findOne({ where: { name: storeName } });
     if (!restaurant) {
       this.logger.warn(`⚠️ 매칭 실패 → DB에 없는 식당: ${storeName}`);
-      // 없으면 자동 생성 (선택)
+      // 없으면 자동 생성
       restaurant = this.restaurantRepo.create({
         name: storeName,
-        address: "",
+        address: '',
         review_count: 0,
         total_score: 0,
         sentiment_score: 0,
@@ -134,7 +136,7 @@ export class ReviewService {
     let failed = 0;
 
     for (const row of rows) {
-      const text = String(row.review ?? row.text ?? "").trim();
+      const text = String(row.review ?? row.text ?? '').trim();
       if (!text) {
         failed++;
         continue;
@@ -157,7 +159,7 @@ export class ReviewService {
     await this.aggregateRestaurantStats(restaurant.id);
 
     return {
-      message: "CSV 업로드 및 저장 완료",
+      message: 'CSV 업로드 및 저장 완료',
       total: rows.length,
       success,
       failed,
@@ -169,11 +171,11 @@ export class ReviewService {
    */
   async aggregateRestaurantStats(restaurantId: number) {
     const result = await this.reviewRepo
-      .createQueryBuilder("r")
-      .select("COUNT(*)", "cnt")
-      .addSelect("AVG(r.score)", "avg_score")
-      .addSelect("AVG(r.score)", "avg_sentiment") // 필요시 sentiment 별도 처리
-      .where("r.restaurant_id = :id", { id: restaurantId })
+      .createQueryBuilder('r')
+      .select('COUNT(*)', 'cnt')
+      .addSelect('AVG(r.score)', 'avg_score')
+      .addSelect('AVG(r.score)', 'avg_sentiment') // 필요시 sentiment 별도 처리
+      .where('r.restaurant_id = :id', { id: restaurantId })
       .getRawOne();
 
     await this.restaurantRepo.update(restaurantId, {

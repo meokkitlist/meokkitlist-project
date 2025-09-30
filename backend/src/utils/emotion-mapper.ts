@@ -1,8 +1,8 @@
 // src/utils/emotion-mapper.ts
 
-// 라벨을 positive / negative / neutral 로 정규화
-function normalizeLabel(label: string | null): 'positive' | 'negative' | 'neutral' | null {
-  if (!label) return 'neutral'; // null 또는 빈 문자열 → 중립 취급
+// 실제 DB에서 발견된 라벨들에 대한 정규화 매핑
+function normalizeLabel(label: string | null): 'positive' | 'negative' | 'neutral' {
+  if (!label) return 'neutral';
 
   const map: Record<string, 'positive' | 'negative' | 'neutral'> = {
     // ✅ Positive
@@ -22,13 +22,13 @@ function normalizeLabel(label: string | null): 'positive' | 'negative' | 'neutra
     '일상적인': 'neutral',
     '생각이 많은': 'neutral',
     'Unknown': 'neutral',
-    '': 'neutral', // 빈 문자열도 중립 처리
+    '': 'neutral',
   };
 
-  return map[label] ?? 'neutral'; // 혹시 모르는 값 → neutral
+  return map[label] ?? 'neutral';
 }
 
-// 점수 기반 이모지 매핑
+// 점수(score) + 정규화된 감정 라벨에 따라 이모지 매핑
 export function mapEmotion(score: number, label: string | null): string {
   const normLabel = normalizeLabel(label);
 
@@ -45,7 +45,7 @@ export function mapEmotion(score: number, label: string | null): string {
   }
 
   if (normLabel === 'neutral') {
-    return '😐'; // 중립
+    return '😐';
   }
 
   return '🤔'; // fallback
