@@ -26,10 +26,10 @@ export class ReviewDto {
   score: number | null;
 
   @ApiProperty()
-  percent: number | null;
+  emoji: string | null;
 
   @ApiProperty()
-  emoji: string;
+  percent: number | null;
 
   constructor(entity: Review) {
     this.id = entity.id;
@@ -41,10 +41,7 @@ export class ReviewDto {
     this.score = entity.score;
     this.percent = entity.percent;
 
-    // ✅ DB의 emoji 값 무시하고 mapEmotion으로 새로 매핑
-    this.emoji = mapEmotion(
-      entity.score ? Number(entity.score) : 0,
-      entity.sentiment
-    );
+    // ✅ DB 값 무시하고 mapEmotion으로 덮어쓰기
+    this.emoji = mapEmotion(entity.score ?? 0, entity.sentiment);
   }
 }

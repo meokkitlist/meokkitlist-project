@@ -1,6 +1,6 @@
 // src/utils/emotion-mapper.ts
 
-// 실제 DB에서 발견된 라벨들에 대한 정규화 매핑
+// 실제 DB에서 발견된 라벨들을 표준 positive/negative/neutral 로 정규화
 function normalizeLabel(label: string | null): 'positive' | 'negative' | 'neutral' {
   if (!label) return 'neutral';
 
@@ -45,8 +45,8 @@ export function mapEmotion(score: number, label: string | null): string {
   }
 
   if (normLabel === 'neutral') {
-    return '😐';
+    return '😐'; // 중립
   }
 
-  return '🤔'; // fallback
+  return '🤔'; // fallback (예상 밖 라벨)
 }
