@@ -1,3 +1,4 @@
+// src/controllers/review.controller.ts
 import {
   BadRequestException,
   Body,
@@ -24,8 +25,8 @@ import { IsEnum, IsOptional, IsString } from "class-validator";
 import { parse } from "csv-parse/sync";
 
 import { ReviewService } from "../services/review.service";
-import { SentimentService } from "../services/sentiment.service";
 import { RestaurantService } from "../services/restaurant.service";
+import { ReviewDto } from "../dto/review.dto";
 
 export enum ReviewSource {
   USER = "user",
@@ -64,7 +65,6 @@ export class ReviewController {
   private readonly logger = new Logger(ReviewController.name);
   constructor(
     private readonly reviewService: ReviewService,
-    private readonly sentimentService: SentimentService,
     private readonly restaurantService: RestaurantService,
   ) {}
 
@@ -72,7 +72,8 @@ export class ReviewController {
   @ApiOperation({ summary: "단일 리뷰 생성" })
   @ApiCreatedResponse({ description: "리뷰 생성 성공" })
   async createReview(@Body() body: CreateReviewDto) {
-    return this.reviewService.createReview(body);
+    const entity = await this.reviewService.createReview(body);
+    return new ReviewDto(entity); // ✅ 항상 DTO로 감싸서 반환
   }
 
   @Post("upload-csv")
@@ -146,7 +147,6 @@ export class ReviewController {
       );
     }
 
-    // ✅ 자동 생성 포함
     const restaurant = await this.restaurantService.getOrCreateRestaurantByName(storeName);
     const restaurantId = String(restaurant.id);
 
@@ -166,8 +166,7 @@ export class ReviewController {
 
     let successCount = 0;
     let failCount = 0;
-    const savedReviews: any[] = [];
-    const failedReviews: { review: string; error: string }[] = [];
+    const savedReviews: ReviewDto[] = [];
 
     this.logger.log(`📊 총 ${rows.length}개의 리뷰를 파싱했습니다.`);
 
@@ -176,21 +175,17 @@ export class ReviewController {
       if (!reviewText || reviewText.length === 0) continue;
 
       try {
-        const res = await this.reviewService.createReview({
+        const entity = await this.reviewService.createReview({
           text: reviewText,
           restaurant_id: restaurantId,
           source: ReviewSource.CRAWL,
         });
-        savedReviews.push(res);
+        savedReviews.push(new ReviewDto(entity)); // ✅ DTO로 변환
         successCount++;
       } catch (err: any) {
         this.logger.warn(
           `❌ 리뷰 저장 실패: "${reviewText}"\n에러: ${err?.message ?? err}`,
         );
-        failedReviews.push({
-          review: reviewText,
-          error: err?.message ?? String(err),
-        });
         failCount++;
       }
     }
@@ -201,7 +196,6 @@ export class ReviewController {
       success: successCount,
       failed: failCount,
       savedReviews,
-      failedReviews,
     };
   }
 }

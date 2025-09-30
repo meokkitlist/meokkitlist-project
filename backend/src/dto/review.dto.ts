@@ -1,7 +1,7 @@
 // src/dto/review.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
-import { mapEmotion } from '../utils/emotion-mapper';
-import { Review } from '../entities/review.entity';
+import { ApiProperty } from "@nestjs/swagger";
+import { Review } from "../entities/review.entity";
+import { mapEmotion } from "../utils/emotion-mapper";
 
 export class ReviewDto {
   @ApiProperty()
@@ -10,29 +10,41 @@ export class ReviewDto {
   @ApiProperty()
   text: string;
 
-  @ApiProperty({ example: '기쁨(행복한)' })
+  @ApiProperty()
+  restaurant_id: number | null;
+
+  @ApiProperty()
+  user_id: string | null;
+
+  @ApiProperty()
+  source: string;
+
+  @ApiProperty()
   sentiment: string | null;
 
-  @ApiProperty({ example: 0.75 })
+  @ApiProperty()
   score: number | null;
 
-  @ApiProperty({ example: '😊' })
-  emoji: string;
-
-  @ApiProperty({ example: 58 })
+  @ApiProperty()
   percent: number | null;
+
+  @ApiProperty()
+  emoji: string;
 
   constructor(entity: Review) {
     this.id = entity.id;
     this.text = entity.text;
+    this.restaurant_id = entity.restaurant_id;
+    this.user_id = entity.user_id;
+    this.source = entity.source;
     this.sentiment = entity.sentiment;
     this.score = entity.score;
     this.percent = entity.percent;
 
-    // ✅ DB의 emoji 컬럼 무시, 항상 새 매핑
+    // ✅ DB의 emoji 값 무시하고 mapEmotion으로 새로 매핑
     this.emoji = mapEmotion(
       entity.score ? Number(entity.score) : 0,
-      entity.sentiment,
+      entity.sentiment
     );
   }
 }
