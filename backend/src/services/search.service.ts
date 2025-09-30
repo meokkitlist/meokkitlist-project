@@ -72,7 +72,11 @@ export class SearchService implements OnModuleInit {
       if (SYNONYMS[k]) expanded.push(...SYNONYMS[k]);
     });
 
-    const kwList = [...new Set([...extractedKeywords, ...expanded])];
+    // ✅ 키워드 정규화 적용
+    const normalize = (k: string) => this.keywordMapService['normalizeKeyword'](k);
+    const kwList = [...new Set([...extractedKeywords, ...expanded])]
+      .map(normalize)
+      .filter(Boolean);
 
     if (!kwList.length) {
       return {
@@ -274,7 +278,9 @@ export class SearchService implements OnModuleInit {
   }
 
   private calcMatchScore(restaurantKeywords: string[], needleKeywords: string[]) {
-    const rset = new Set(restaurantKeywords.map((k) => k.trim()));
+    const rset = new Set(restaurantKeywords.map((k) =>
+      this.keywordMapService["normalizeKeyword"](k)
+    ));
     let score = 0;
     const matched: string[] = [];
     for (const kw of needleKeywords) {
