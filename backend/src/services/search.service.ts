@@ -167,6 +167,10 @@ export class SearchService implements OnModuleInit {
           ...r,
           lat: r.lat,   // 좌표 추가
           lon: r.lon,   // 좌표 추가
+          preview: r.preview 
+            ?? (Array.isArray((r as any).reviews) && (r as any).reviews.length > 0 
+                  ? (r as any).reviews[0].content 
+                  : null),   // preview 매핑 추가
           reviewCount: r.review_count,
           sentimentScore: r.sentiment_score,
           naverScore: r.naver_score,
