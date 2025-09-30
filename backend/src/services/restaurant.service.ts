@@ -23,7 +23,7 @@ export class RestaurantService {
       keywords: data.keywords ?? null,
       review_count: data.review_count ?? 0,
       total_score: data.total_score ?? 0,
-      sentiment_score: (data as any).sentiment_score ?? 0, // ✅ 추가
+      sentiment_score: (data as any).sentiment_score ?? 0,
       naver_score: data.naver_score ?? 0,
       preview: data.preview ?? null,
       url: data.url ?? null,
@@ -49,7 +49,7 @@ export class RestaurantService {
       keywords: [],
       review_count: 0,
       total_score: 0,
-      sentiment_score: 0, // ✅ 추가
+      sentiment_score: 0,
     });
 
     return this.restaurantRepo.save(restaurant);
@@ -57,6 +57,7 @@ export class RestaurantService {
 
   async uploadCsv(filePath: string): Promise<{
     inserted: number;
+    updated: number;
     skipped: number;
     withCoords: number;
     withoutCoords: number;
@@ -121,7 +122,8 @@ export class RestaurantService {
         naverscore: "naver_score",
         preview: "preview",
         keywords: "keywords",
-        sentiment_score: "sentiment_score", // ✅ 추가
+        sentiment_score: "sentiment_score",
+        totalscore: "total_score",
       };
 
       return aliasMap[h] ?? h;
@@ -145,37 +147,25 @@ export class RestaurantService {
               return;
             }
 
-            const latRaw = normalizeNumber(row["lat"]);
-            const lonRaw = normalizeNumber(row["lon"]);
-            const lat = Number.isFinite(latRaw) ? latRaw : null;
-            const lon = Number.isFinite(lonRaw) ? lonRaw : null;
-
-            const review_countRaw = normalizeNumber(row["review_count"]);
-            const naver_scoreRaw = normalizeNumber(row["naver_score"]);
-            const sentiment_scoreRaw = normalizeNumber(row["sentiment_score"]);
-
-            const review_count = Number.isFinite(review_countRaw) ? review_countRaw : 0;
-            const naver_score = Number.isFinite(naver_scoreRaw) ? naver_scoreRaw : 0;
-            const sentiment_score = Number.isFinite(sentiment_scoreRaw)
-              ? sentiment_scoreRaw
-              : 0;
-
-            const keywords = toKeywordsArray(row["keywords"]);
-
-            rows.push({
+            const dto: CreateRestaurantDto & {
+              sentiment_score?: number;
+              total_score?: number;
+            } = {
               name,
               address: String(row["address"] ?? "").trim(),
-              lat,
-              lon,
+              lat: normalizeNumber(row["lat"]),
+              lon: normalizeNumber(row["lon"]),
               preview: row["preview"] ?? null,
               url: row["url"] ?? null,
               review: row["review"] ?? null,
-              review_count,
-              total_score: 0,
-              sentiment_score, // ✅ 추가
-              naver_score,
-              keywords: keywords ?? undefined,
-            } as CreateRestaurantDto & { sentiment_score?: number });
+              review_count: normalizeNumber(row["review_count"]),
+              naver_score: normalizeNumber(row["naver_score"]),
+              sentiment_score: normalizeNumber(row["sentiment_score"]),
+              total_score: normalizeNumber(row["total_score"]),
+              keywords: toKeywordsArray(row["keywords"]) ?? undefined,
+            };
+
+            rows.push(dto);
           } catch (e) {
             skipped++;
             this.logger.error(
@@ -187,43 +177,67 @@ export class RestaurantService {
           this.logger.log(`✅ CSV 파싱 완료: ${rows.length}개 유효 row (skipped=${skipped})`);
           resolve();
         })
-        .once("error", (err: Error) => {
-          this.logger.error(`❌ CSV Parse Error: ${err.message}`);
-          reject(err);
-        });
+        .once("error", (err: Error) => reject(err));
     });
 
-    if (rows.length === 0) {
-      this.logger.warn("⚠️ 유효한 row가 없어 저장하지 않습니다.");
-      await this.safeUnlink(filePath);
-      return { inserted: 0, skipped, withCoords: 0, withoutCoords: 0 };
+    let inserted = 0;
+    let updated = 0;
+
+    for (const dto of rows) {
+      const existing = await this.findByName(dto.name);
+      if (existing) {
+        existing.address = dto.address || existing.address;
+        existing.lat = this.toNullableNumber(dto.lat) ?? existing.lat;
+        existing.lon = this.toNullableNumber(dto.lon) ?? existing.lon;
+        existing.preview = dto.preview || existing.preview;
+        existing.url = dto.url || existing.url;
+        existing.keywords = dto.keywords || existing.keywords;
+
+        // ✅ 점수 값이 0일 경우 덮어쓰지 않음
+        if (dto.review_count && dto.review_count > 0) {
+          existing.review_count = dto.review_count;
+        }
+        if (dto.naver_score && dto.naver_score > 0) {
+          existing.naver_score = dto.naver_score;
+        }
+        if (dto.sentiment_score && dto.sentiment_score > 0) {
+          existing.sentiment_score = dto.sentiment_score;
+        }
+        if (dto.total_score && dto.total_score > 0) {
+          existing.total_score = dto.total_score;
+        }
+
+        await this.restaurantRepo.save(existing);
+        updated++;
+      } else {
+        const newR = this.restaurantRepo.create({
+          ...dto,
+          lat: this.toNullableNumber(dto.lat),
+          lon: this.toNullableNumber(dto.lon),
+          keywords: dto.keywords ?? [],
+          review_count: dto.review_count && dto.review_count > 0 ? dto.review_count : 0,
+          naver_score: dto.naver_score && dto.naver_score > 0 ? dto.naver_score : 0,
+          sentiment_score:
+            dto.sentiment_score && dto.sentiment_score > 0 ? dto.sentiment_score : 0,
+          total_score: dto.total_score && dto.total_score > 0 ? dto.total_score : 0,
+        });
+        await this.restaurantRepo.save(newR);
+        inserted++;
+      }
     }
 
-    const entities = rows.map((dto) =>
-      this.restaurantRepo.create({
-        ...dto,
-        lat: this.toNullableNumber(dto.lat),
-        lon: this.toNullableNumber(dto.lon),
-        keywords: dto.keywords ?? null,
-      }),
-    );
-
-    await this.restaurantRepo.save(entities);
-
-    const withCoords = entities.filter((e) => e.lat != null && e.lon != null).length;
-    const withoutCoords = entities.length - withCoords;
+    const withCoords = rows.filter(
+      (r) => Number.isFinite(r.lat) && Number.isFinite(r.lon),
+    ).length;
+    const withoutCoords = rows.length - withCoords;
 
     await this.safeUnlink(filePath);
+
     this.logger.log(
-      `📦 저장 완료: inserted=${entities.length}, withCoords=${withCoords}, withoutCoords=${withoutCoords}, skipped=${skipped}`,
+      `📦 저장 완료: inserted=${inserted}, updated=${updated}, skipped=${skipped}, withCoords=${withCoords}, withoutCoords=${withoutCoords}`,
     );
 
-    return {
-      inserted: entities.length,
-      skipped,
-      withCoords,
-      withoutCoords,
-    };
+    return { inserted, updated, skipped, withCoords, withoutCoords };
   }
 
   private toNullableNumber(n: any): number | null {

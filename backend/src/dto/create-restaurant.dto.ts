@@ -30,6 +30,10 @@ export class CreateRestaurantDto {
 
   @IsOptional()
   @IsNumber()
+  sentiment_score?: number; // ✅ 추가
+
+  @IsOptional()
+  @IsNumber()
   total_score?: number;
 
   @IsOptional()
@@ -48,4 +52,5 @@ export class CreateRestaurantDto {
   @IsOptional()
   @IsString()
   review?: string | null;
+  
 }

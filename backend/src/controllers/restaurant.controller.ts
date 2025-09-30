@@ -37,9 +37,9 @@ export class RestaurantController {
         filename: (_req, file, cb) => {
           const ts = Date.now();
           const parsed = path.parse(file.originalname);
-          // 안전한 파일명 생성 (확장자 보존, 중복 확장자 방지)
           const safeBase =
-            parsed.name.normalize("NFKC").replace(/[^\w가-힣.\-_/]/g, "_") || "restaurants";
+            parsed.name.normalize("NFKC").replace(/[^\w가-힣.\-_/]/g, "_") ||
+            "restaurants";
           const ext = parsed.ext?.toLowerCase() === ".csv" ? ".csv" : ".csv";
           cb(null, `restaurant_${ts}_${safeBase}${ext}`);
         },
@@ -53,7 +53,7 @@ export class RestaurantController {
           ok,
         );
       },
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+      limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
   @ApiConsumes("multipart/form-data")
@@ -67,7 +67,6 @@ export class RestaurantController {
     if (!file?.path) {
       throw new BadRequestException("파일 업로드 실패");
     }
-    const result = await this.restaurantService.uploadCsv(file.path);
-    return result; // { inserted, skipped, withCoords, withoutCoords }
+    return this.restaurantService.uploadCsv(file.path);
   }
 }
