@@ -84,7 +84,7 @@ export function Home() {
     const reqBody = {
       keyword: query,
       userPosition: pos,
-      range: Math.max(0.1, Number((radiusMeters / 1000).toFixed(2))), // m→km
+      range: radiusMeters,
     }
 
     try {
