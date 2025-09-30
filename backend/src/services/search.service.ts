@@ -165,6 +165,8 @@ export class SearchService implements OnModuleInit {
         const r = e.raw as Restaurant;
         return new SearchResultDto({
           ...r,
+          lat: r.lat,   // 좌표 추가
+          lon: r.lon,   // 좌표 추가
           reviewCount: r.review_count,
           sentimentScore: r.sentiment_score,
           naverScore: r.naver_score,
@@ -173,7 +175,7 @@ export class SearchService implements OnModuleInit {
           keywordsMatched: e.keywordsMatched,
           distanceKm: e.distanceKm,
           rank: i + 1,
-        });
+    });
       }),
     };
   }

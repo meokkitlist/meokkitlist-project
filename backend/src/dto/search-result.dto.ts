@@ -51,19 +51,33 @@ export class SearchResultDto {
   rank: number;
 
   constructor(entity: any) {
-    this.restaurant_id = entity.id;
-    this.marketName = entity.name;
-    this.marketAddress = entity.address;
-    this.preview = entity.preview ?? null;
-    this.reviewCount = entity.reviewCount;
-    this.sentimentScore = entity.sentimentScore;
-    this.finalScore = entity.finalScore;
-    this.marketUrl = entity.marketUrl ?? null;
-    this.relatedKeyword = entity.relatedKeyword ?? null;
-    this.keywordsMatched = entity.keywordsMatched ?? null;
-    this.naverScore = entity.naverScore ?? null;
-    this.coordinates = entity.coordinates ?? { lat: null, lon: null };
-    this.distanceKm = entity.distanceKm ?? null;
-    this.rank = entity.rank;
+  this.restaurant_id = entity.id;
+  this.marketName = entity.name;
+  this.marketAddress = entity.address;
+  this.preview = entity.preview ?? null;
+  this.reviewCount = entity.reviewCount;
+  this.sentimentScore = entity.sentimentScore;
+  this.finalScore = entity.finalScore;
+
+  // 좌표 있을 때 목적지 URL 생성
+  if (entity.lat && entity.lon) {
+    this.marketUrl = `https://map.kakao.com/link/to/${encodeURIComponent(entity.name)},${entity.lat},${entity.lon}`;
+  } else {
+    // 좌표 없으면 검색 URL이라도 연결
+    this.marketUrl = `https://map.kakao.com/link/search/${encodeURIComponent(entity.name)}`;
   }
+
+  this.relatedKeyword = entity.relatedKeyword ?? null;
+  this.keywordsMatched = entity.keywordsMatched ?? null;
+  this.naverScore = entity.naverScore ?? null;
+
+  // 좌표 매핑
+  this.coordinates = {
+    lat: entity.lat ? Number(entity.lat) : null,
+    lon: entity.lon ? Number(entity.lon) : null,
+  };
+
+  this.distanceKm = entity.distanceKm ?? null;
+  this.rank = entity.rank;
+}
 }

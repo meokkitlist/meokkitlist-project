@@ -3,7 +3,6 @@ import os, csv, time, json, hashlib, re
 import requests
 from collections import OrderedDict, Counter
 
-# -------------------- 설정 --------------------
 KAKAO_REST_KEY = os.getenv("KAKAO_REST_KEY") or "7345d9c77568465c1959dbad1dcdbfc3"
 HEADERS = {"Authorization": f"KakaoAK {KAKAO_REST_KEY}"}
 
@@ -15,7 +14,6 @@ INPUT_DIRS = [p for p in [d.strip() for d in ENV_DIRS.split(";")] if p] or [
 REGION_HINTS = ["부산", "Busan"]
 SLEEP_MS = 200
 
-# 키워드 기반 휴리스틱(부분일치)
 NAME_HINTS = [
     "상호", "업소", "업체", "가게", "식당", "매장", "명칭", "점포",
     "지점", "브랜드", "store", "restaurant", "place", "title", "name"
@@ -23,30 +21,24 @@ NAME_HINTS = [
 ADDR_HINTS = [
     "주소", "도로명", "지번", "address", "road_address", "jibun"
 ]
-
-# Kakao 응답에서 바로 lat/lon이 들어있을 수도 있어 대비
 LAT_HINTS = ["lat", "위도", "y", "latitude"]
 LON_HINTS = ["lon", "경도", "x", "longitude"]
 
-# -------------------- 헬퍼 --------------------
-def norm(s):  # 키 정규화: 소문자, 공백제거
+def norm(s):
     if not isinstance(s, str):
         s = str(s)
     return re.sub(r"\s+", "", s.strip().lower())
 
 def choose_field(keys, hints):
-    """키 리스트에서 hints(부분일치) 우선 규칙으로 가장 그럴듯한 것을 1개 고른다."""
     nk = [ (k, norm(k)) for k in keys ]
-    # 가중치: 앞쪽일수록 가중(보편적 키 우선)
     for hint in hints:
         h = norm(hint)
         for raw, kn in nk:
-            if h in kn:  # 부분 포함
+            if h in kn:
                 return raw
     return None
 
 def detect_columns(header):
-    """헤더에서 name/address/lat/lon 후보 자동 검출"""
     name_col = choose_field(header, NAME_HINTS)
     addr_col = choose_field(header, ADDR_HINTS)
     lat_col  = choose_field(header, LAT_HINTS)
@@ -62,6 +54,7 @@ def norm_float(x):
         return None
 
 def cache_key(txt):
+    import hashlib
     return hashlib.sha1(txt.encode("utf-8")).hexdigest()
 
 _cache = {}
@@ -91,7 +84,6 @@ def geocode(name, address, region_hints=REGION_HINTS):
     lon = lat = None
     cand = []
 
-    # 주소 우선
     if address:
         try:
             data = kakao_search_address(address)
@@ -100,7 +92,6 @@ def geocode(name, address, region_hints=REGION_HINTS):
             pass
         time.sleep(SLEEP_MS / 1000.0)
 
-    # 키워드 보조
     if not cand and name:
         q = f"{name} {region_hints[0]}" if region_hints else name
         try:
@@ -147,21 +138,6 @@ def iter_csv_files():
                         seen.add(full)
                         yield full
 
-def print_scan_report():
-    dirs = [os.path.abspath(d) for d in INPUT_DIRS]
-    print("스캔 대상 폴더:")
-    for d in dirs:
-        print(f" - {d}  (exists={os.path.isdir(d)})")
-    files = list(iter_csv_files())
-    print(f"발견한 CSV 파일 수: {len(files)}")
-    if files:
-        show = files[:5]
-        for p in show:
-            print(f"   • {p}")
-        if len(files) > 5:
-            print(f"   • ... 외 {len(files)-5}개")
-
-# -------------------- 집계 --------------------
 def gather_rows():
     bag = OrderedDict()
     matched_files = 0
@@ -184,7 +160,6 @@ def gather_rows():
                 lat_raw = row.get(lat_col, "") if lat_col else ""
                 lon_raw = row.get(lon_col, "") if lon_col else ""
 
-                # name이 완전 비어 있으면 스킵(키워드 검색 불가)
                 if not name:
                     continue
 
@@ -209,10 +184,9 @@ def gather_rows():
     print(f"파일 매칭 결과: 사용 {matched_files}개, 스킵 {skipped_files}개")
     return bag
 
-# -------------------- 메인 --------------------
 def main():
     assert KAKAO_REST_KEY, "환경변수 KAKAO_REST_KEY를 설정하세요."
-    print_scan_report()
+    print("📂 CSV 파일 스캔 시작")
     bag = gather_rows()
     print(f"총 후보 레코드: {len(bag)}")
 
@@ -225,8 +199,13 @@ def main():
             lat = norm_float(extra.get("lat"))
             lon = norm_float(extra.get("lon"))
 
-            if lat is None or lon is None:
-                lat, lon, _ = geocode(name, address, REGION_HINTS)
+            lat_out = lon_out = ""
+            kakao_address = address
+
+            if lat is None or lon is None or not address:
+                lat, lon, best = geocode(name, address, REGION_HINTS)
+                if best and not address:
+                    kakao_address = best.get("road_address_name") or best.get("address_name") or address
 
             if lat is not None and lon is not None:
                 success += 1
@@ -234,12 +213,10 @@ def main():
                 lon_out = f"{lon:.8f}"
             else:
                 fail += 1
-                lat_out = ""
-                lon_out = ""
 
             w.writerow([
                 name,
-                address or "",
+                kakao_address or address or "",
                 lat_out,
                 lon_out,
                 extra.get("preview",""),
