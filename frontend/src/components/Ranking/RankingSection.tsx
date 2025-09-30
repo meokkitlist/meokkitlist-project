@@ -91,22 +91,6 @@ export function RankingSection({ items, loading, keyword, userId }: Props) {
   )
 }
 
-function toKo(en: string): {
-  ko: string
-  tone: 'vpos' | 'pos' | 'neu' | 'neg' | 'vneg' | 'unk' | 'err'
-} {
-  const s = (en || '').toLowerCase()
-  if (s.includes('very') && s.includes('positive'))
-    return { ko: '매우 긍정', tone: 'vpos' }
-  if (s.includes('positive')) return { ko: '긍정', tone: 'pos' }
-  if (s.includes('neutral')) return { ko: '중립', tone: 'neu' }
-  if (s.includes('very') && s.includes('negative'))
-    return { ko: '매우 부정', tone: 'vneg' }
-  if (s.includes('negative')) return { ko: '부정', tone: 'neg' }
-  if (s.includes('error')) return { ko: '오류', tone: 'err' }
-  return { ko: '알 수 없음', tone: 'unk' }
-}
-
 function LazyRankRow({
   item,
   index,
@@ -275,11 +259,10 @@ function LazyRankRow({
                     {!sentiLoading &&
                       senti &&
                       (() => {
-                        const { ko, tone } = toKo(senti.sentiment)
                         return (
-                          <SentimentBadge data-tone={tone}>
+                          <SentimentBadge>
                             <span className="emoji">{senti.emoji || '🔍'}</span>
-                            <span className="label">{ko}</span>
+                            <span className="label">{senti.sentiment}</span>
                             <span className="percent">{senti.percent}%</span>
                           </SentimentBadge>
                         )
