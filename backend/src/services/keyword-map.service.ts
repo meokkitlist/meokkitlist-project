@@ -29,12 +29,12 @@ export class KeywordMapService {
       );
 
       for (const keyword of keywordList) {
-        const trimmed = keyword.trim();
-        if (!newMap.has(trimmed)) {
-          newMap.set(trimmed, []);
+        const normalized = this.normalizeKeyword(keyword);
+        if (!newMap.has(normalized)) {
+          newMap.set(normalized, []);
         }
-        if (!newMap.get(trimmed)!.includes(restaurant.id)) {
-          newMap.get(trimmed)!.push(restaurant.id);
+        if (!newMap.get(normalized)!.includes(restaurant.id)) {
+          newMap.get(normalized)!.push(restaurant.id);
         }
       }
     }
@@ -47,8 +47,9 @@ export class KeywordMapService {
 
   // ✅ 단일 키워드 → 관련 가게 id[]
   getRestaurantIdsByKeyword(keyword: string): number[] {
-    this.logger.log(`🔍 키워드 조회: "${keyword}"`);
-    return this.keywordToRestaurantMap.get(keyword.trim()) || [];
+    const normalized = this.normalizeKeyword(keyword);
+    this.logger.log(`🔍 키워드 조회: "${keyword}" → "${normalized}"`);
+    return this.keywordToRestaurantMap.get(normalized) || [];
   }
 
   // ✅ 전체 Map 조회 (디버깅용)
@@ -58,11 +59,11 @@ export class KeywordMapService {
 
   // ✅ 부분 검색 (GPT 실패 시 fallback)
   searchKeywords(q: string, limit = 10): string[] {
-    const Q = q.trim().toLowerCase();
+    const Q = this.normalizeKeyword(q);
     if (!Q) return [];
 
     const keys = Array.from(this.keywordToRestaurantMap.keys());
-    const hits = keys.filter((k) => k.toLowerCase().includes(Q));
+    const hits = keys.filter((k) => k.includes(Q));
     return hits.slice(0, limit);
   }
 
@@ -94,5 +95,10 @@ export class KeywordMapService {
     }
 
     return [];
+  }
+
+  // ✅ 핵심: 키워드 정규화 함수
+  private normalizeKeyword(k: string): string {
+    return k.trim().toLowerCase().replace(/\s+/g, "");
   }
 }
