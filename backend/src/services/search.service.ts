@@ -9,7 +9,6 @@ import { KeywordMapService } from "./keyword-map.service";
 import { SCORE_WEIGHTS } from "../config/ranking.config";
 
 type LatLng = { lat: number; lon: number };
-type StatRow = { restaurant_id: number; review_count: number; sentiment_score: number };
 
 @Injectable()
 export class SearchService implements OnModuleInit {
@@ -64,7 +63,7 @@ export class SearchService implements OnModuleInit {
       if (SYNONYMS[k]) expanded.push(...SYNONYMS[k]);
     });
 
-    const normalize = (k: string) => this.keywordMapService['normalizeKeyword'](k);
+    const normalize = (k: string) => this.keywordMapService["normalizeKeyword"](k);
     const kwList = [...new Set([...extractedKeywords, ...expanded])]
       .map(normalize)
       .filter(Boolean);
@@ -94,7 +93,7 @@ export class SearchService implements OnModuleInit {
     }
 
     // -------------------------
-    // 3. 스코어 계산 + 거리 로그 추가
+    // 3. 스코어 계산
     // -------------------------
     const needles = kwList;
 
@@ -102,21 +101,17 @@ export class SearchService implements OnModuleInit {
       const rKeywords = this.safeParseKeywords((r as any).keywords);
       const { score: matchScore, matched } = this.calcMatchScore(rKeywords, needles);
 
-      const totalScore = (r as any).total_score ?? 0;
-      const stat = { review_count: 0, sentiment_score: 0 };
-      const reviewCount = stat.review_count;
-      const sentimentScore = stat.sentiment_score;
+      // ✅ DB 값 직접 반영
+      const reviewCount = r.review_count ?? 0;
+      const sentimentScore = r.sentiment_score ?? 0;
+      const totalScore = r.total_score ?? 0;
+      const naverScore = r.naver_score ?? 0;
 
       let distanceKm: number | null = null;
       if (userPosition?.lat && userPosition?.lon && r.lat && r.lon) {
         distanceKm = this.haversine(
           { lat: userPosition.lat, lon: userPosition.lon },
           { lat: Number(r.lat), lon: Number(r.lon) },
-        );
-        this.logger.log(`📍 거리 계산 [${r.name}] = ${distanceKm.toFixed(2)} km (range=${range}m)`);
-      } else {
-        this.logger.warn(
-          `⚠️ 거리 계산 실패 [${r.name}] 좌표 없음 user=${JSON.stringify(userPosition)}, restaurant=(${r.lat}, ${r.lon})`
         );
       }
 
@@ -127,8 +122,9 @@ export class SearchService implements OnModuleInit {
         sentimentScore,
       });
 
-      // 매칭 로그
-      this.logger.log(`🔍 [${r.name}] matchScore=${matchScore}, matched=${matched.join(",")}`);
+      this.logger.log(
+        `🔍 [${r.name}] matchScore=${matchScore}, reviewCount=${reviewCount}, sentimentScore=${sentimentScore}, matched=${matched.join(",")}`,
+      );
 
       return {
         raw: r,
@@ -136,6 +132,7 @@ export class SearchService implements OnModuleInit {
         totalScore,
         reviewCount,
         sentimentScore,
+        naverScore,
         finalScore,
         keywordsMatched: matched,
         distanceKm,
@@ -167,23 +164,23 @@ export class SearchService implements OnModuleInit {
       data: top.map((e, i): SearchResultDto => {
         const r = e.raw as Restaurant;
         return {
-          id: (r as any).id,
-          name: (r as any).name,
-          address: (r as any).address,
-          preview: (r as any).preview ?? null,
-          reviewCount: e.reviewCount,
-          sentimentScore: e.sentimentScore,
+          id: r.id,
+          name: r.name,
+          address: r.address,
+          preview: r.preview ?? null,
+          reviewCount: r.review_count,          // ✅ DB 값
+          sentimentScore: r.sentiment_score,    // ✅ DB 값
           finalScore: e.finalScore,
           marketUrl:
             r.lat && r.lon
-              ? `https://map.kakao.com/link/to/${encodeURIComponent((r as any).name)},${r.lat},${r.lon}`
+              ? `https://map.kakao.com/link/to/${encodeURIComponent(r.name)},${r.lat},${r.lon}`
               : undefined,
-          relatedKeyword: this.safeParseKeywords((r as any).keywords),
+          relatedKeyword: this.safeParseKeywords(r.keywords),
           keywordsMatched: e.keywordsMatched,
-          naverScore: (r as any).naver_score ?? null,
+          naverScore: r.naver_score ?? null,    // ✅ DB 값
           coordinates: {
-            lat: (r as any).lat ?? null,
-            lon: (r as any).lon ?? null,
+            lat: r.lat ?? null,
+            lon: r.lon ?? null,
           },
           distanceKm: e.distanceKm,
           rank: i + 1,
@@ -222,7 +219,7 @@ export class SearchService implements OnModuleInit {
     return [];
   }
 
-  // ✅ 개선된 매칭 함수
+  // ✅ 부분 매칭 허용 매칭 함수
   private calcMatchScore(restaurantKeywords: string[], needleKeywords: string[]) {
     const rset = new Set(
       restaurantKeywords.map((k) =>
@@ -235,7 +232,6 @@ export class SearchService implements OnModuleInit {
     for (const kw of needleKeywords) {
       const k = kw.trim().toLowerCase();
 
-      // 부분 일치 허용
       const hit = Array.from(rset).some(
         (rk) =>
           rk === k ||

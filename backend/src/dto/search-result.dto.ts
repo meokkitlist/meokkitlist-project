@@ -8,11 +8,11 @@ export class SearchResultDto {
   @ApiProperty({ example: '코하루' })
   name: string;
 
-  @ApiProperty({ example: '부산 금정구 부산대학로38번길 16' })
-  address: string;
+  @ApiProperty({ example: '부산 금정구 부산대학로38번길 16', nullable: true })
+  address: string | null;   // ✅ 수정 (nullable 허용)
 
-  @ApiProperty({ example: '맛있는 돈코츠라멘집' })
-  preview?: string;
+  @ApiProperty({ example: '맛있는 돈코츠라멘집', nullable: true })
+  preview?: string | null;  // ✅ 수정 (nullable 허용)
 
   @ApiProperty({ example: 3024 })
   reviewCount: number;
@@ -23,22 +23,28 @@ export class SearchResultDto {
   @ApiProperty({ example: 85.3, description: '최종 랭킹 점수' })
   finalScore: number;
 
-  @ApiProperty({ example: 'https://map.kakao.com/link/to/코하루,35.2321,129.081232' })
-  marketUrl?: string;
+  @ApiProperty({
+    example: 'https://map.kakao.com/link/to/코하루,35.2321,129.081232',
+    nullable: true,
+  })
+  marketUrl?: string | null;
 
-  @ApiProperty({ example: ['삼겹살', '고기', '맛집'] })
-  relatedKeyword?: string[];
+  @ApiProperty({ example: ['삼겹살', '고기', '맛집'], nullable: true })
+  relatedKeyword?: string[] | null;
 
-  @ApiProperty({ example: ['삼겹살'] })
-  keywordsMatched?: string[];
+  @ApiProperty({ example: ['삼겹살'], nullable: true })
+  keywordsMatched?: string[] | null;
 
-  @ApiProperty({ example: 4.2 })
-  naverScore?: number;
+  @ApiProperty({ example: 4.2, nullable: true })
+  naverScore?: number | null;
 
-  @ApiProperty({ example: { lat: 35.2321, lon: 129.081232 } })
+  @ApiProperty({
+    example: { lat: 35.2321, lon: 129.081232 },
+    nullable: true,
+  })
   coordinates?: { lat: number | null; lon: number | null };
 
-  @ApiProperty({ example: 0.5 })
+  @ApiProperty({ example: 0.5, nullable: true })
   distanceKm?: number | null;
 
   @ApiProperty({ example: 1 })
