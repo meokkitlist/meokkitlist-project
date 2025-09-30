@@ -3,16 +3,16 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class SearchResultDto {
   @ApiProperty({ example: 1 })
-  id: number;
+  restaurant_id: number;
 
   @ApiProperty({ example: '코하루' })
-  name: string;
+  marketName: string;
 
   @ApiProperty({ example: '부산 금정구 부산대학로38번길 16', nullable: true })
-  address: string | null;   // ✅ 수정 (nullable 허용)
+  marketAddress: string | null;
 
   @ApiProperty({ example: '맛있는 돈코츠라멘집', nullable: true })
-  preview?: string | null;  // ✅ 수정 (nullable 허용)
+  preview?: string | null;
 
   @ApiProperty({ example: 3024 })
   reviewCount: number;
@@ -49,4 +49,21 @@ export class SearchResultDto {
 
   @ApiProperty({ example: 1 })
   rank: number;
+
+  constructor(entity: any) {
+    this.restaurant_id = entity.id;
+    this.marketName = entity.name;
+    this.marketAddress = entity.address;
+    this.preview = entity.preview ?? null;
+    this.reviewCount = entity.reviewCount;
+    this.sentimentScore = entity.sentimentScore;
+    this.finalScore = entity.finalScore;
+    this.marketUrl = entity.marketUrl ?? null;
+    this.relatedKeyword = entity.relatedKeyword ?? null;
+    this.keywordsMatched = entity.keywordsMatched ?? null;
+    this.naverScore = entity.naverScore ?? null;
+    this.coordinates = entity.coordinates ?? { lat: null, lon: null };
+    this.distanceKm = entity.distanceKm ?? null;
+    this.rank = entity.rank;
+  }
 }

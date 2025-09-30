@@ -28,7 +28,7 @@ export class SearchService implements OnModuleInit {
 
   async searchByKeyword(dto: SearchKeywordDto & { keywords?: string[] }) {
     const { keyword, userPosition } = dto;
-    const rangeKm = Number.isFinite(Number(dto.range)) ? Number(dto.range) : 5; // km 기본값
+    const rangeKm = Number.isFinite(Number(dto.range)) ? Number(dto.range) : 5;
 
     // -------------------------
     // 1. 키워드 추출 + 병합
@@ -48,9 +48,7 @@ export class SearchService implements OnModuleInit {
 
     if (keyword) {
       const tokens = keyword
-        .split(/[\s,]+/)
-        .map((s) => s.replace(/[^\p{L}\p{N}]/gu, ''))
-        .filter((s) => s.length >= 2);
+        .split(/[\s,]+/).map((s) => s.replace(/[^\p{L}\p{N}]/gu, '')).filter((s) => s.length >= 2);
       extractedKeywords.push(...tokens);
     }
 
@@ -79,7 +77,7 @@ export class SearchService implements OnModuleInit {
     }
 
     // -------------------------
-    // 2. 후보 식당 수집 (키워드 ANY 매칭: 키워드맵에서 집합 합집합)
+    // 2. 후보 식당 수집
     // -------------------------
     const restaurantIdSet = new Set<number>();
     for (const kw of kwList) {
@@ -89,21 +87,18 @@ export class SearchService implements OnModuleInit {
 
     const idList = [...restaurantIdSet];
     let candidates: Restaurant[] = [];
-
     if (idList.length > 0) {
       candidates = await this.restaurantRepo.find({ where: { id: In(idList) } });
     }
 
     // -------------------------
-    // 3. 스코어 계산 + 거리 필터 (range는 km 단위!)
+    // 3. 스코어 계산 + 거리 필터
     // -------------------------
     const needles = kwList;
-
     let enriched = candidates.map((r) => {
       const rKeywords = this.safeParseKeywords((r as any).keywords);
       const { score: matchScore, matched } = this.calcMatchScore(rKeywords, needles);
 
-      // ✅ DB 값 직접 반영
       const reviewCount = r.review_count ?? 0;
       const sentimentScore = r.sentiment_score ?? 0;
       const totalScore = r.total_score ?? 0;
@@ -141,9 +136,8 @@ export class SearchService implements OnModuleInit {
       };
     });
 
-    // ✅ range는 km → 필터는 meters 비교
     if (rangeKm && userPosition?.lat && userPosition?.lon) {
-      const rangeMeters = Number(rangeKm) * 1000; // <-- 기존 버그: *1000 누락
+      const rangeMeters = Number(rangeKm) * 1000;
       enriched = enriched.filter(
         (e) => e.distanceKm !== null && e.distanceKm! * 1000 <= rangeMeters,
       );
@@ -159,35 +153,27 @@ export class SearchService implements OnModuleInit {
     const TOPN = 10;
     const top = enriched.slice(0, TOPN);
 
+    // -------------------------
+    // ✅ DTO 생성자 활용
+    // -------------------------
     return {
       meta: {
-        query: { keyword, extractedKeywords: needles, userPosition, range: rangeKm }, // km로 유지
+        query: { keyword, extractedKeywords: needles, userPosition, range: rangeKm },
         resultCount: top.length,
       },
-      data: top.map((e, i): SearchResultDto => {
+      data: top.map((e, i) => {
         const r = e.raw as Restaurant;
-        return {
-          id: r.id,
-          name: r.name,
-          address: r.address,
-          preview: r.preview ?? null,
-          reviewCount: r.review_count,          // ✅ DB 값
-          sentimentScore: r.sentiment_score,    // ✅ DB 값
+        return new SearchResultDto({
+          ...r,
+          reviewCount: r.review_count,
+          sentimentScore: r.sentiment_score,
+          naverScore: r.naver_score,
           finalScore: e.finalScore,
-          marketUrl:
-            r.lat && r.lon
-              ? `https://map.kakao.com/link/to/${encodeURIComponent(r.name)},${r.lat},${r.lon}`
-              : undefined,
           relatedKeyword: this.safeParseKeywords(r.keywords),
           keywordsMatched: e.keywordsMatched,
-          naverScore: r.naver_score ?? null,    // ✅ DB 값
-          coordinates: {
-            lat: r.lat ?? null,
-            lon: r.lon ?? null,
-          },
           distanceKm: e.distanceKm,
           rank: i + 1,
-        };
+        });
       }),
     };
   }
@@ -219,7 +205,6 @@ export class SearchService implements OnModuleInit {
     return [];
   }
 
-  // ✅ 부분 매칭 허용 매칭 함수
   private calcMatchScore(restaurantKeywords: string[], needleKeywords: string[]) {
     const rset = new Set(
       restaurantKeywords.map((k) => this.keywordMapService['normalizeKeyword'](k)),
