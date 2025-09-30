@@ -1,11 +1,12 @@
 // src/dto/search-keyword.dto.ts
-
 import {
   IsString,
   IsOptional,
   IsNumber,
   ValidateNested,
   IsDefined,
+  Min,
+  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -36,9 +37,16 @@ export class SearchKeywordDto {
   @ApiPropertyOptional({ type: PositionDto, description: '사용자 위치 정보' })
   userPosition?: PositionDto;
 
+  /**
+   * 검색 범위 (킬로미터 단위)
+   * - 기본값: 5km
+   * - 허용 범위: 0.3km ~ 10km
+   */
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0.3)
+  @Max(10)
   @ApiPropertyOptional({ example: 5, description: '검색 범위(km)' })
   range?: number;
 }

@@ -1,5 +1,3 @@
-// src/controllers/search.controller.ts
-
 import {
   BadRequestException,
   Body,
@@ -10,13 +8,19 @@ import {
 } from "@nestjs/common";
 import { SearchService } from "../services/search.service";
 import { ApiTags, ApiOperation, ApiBody, ApiQuery, ApiResponse } from "@nestjs/swagger";
-import { PositionDto, SearchKeywordDto } from "../dto/search-keyword.dto";
+import { SearchKeywordDto } from "../dto/search-keyword.dto";
 
 type FlexibleBody = {
   keyword?: string;
   keywords?: string[];
   userPosition?: { lat: number; lon: number };
-  range?: number;
+  range?: number; // km 단위
+};
+
+// km 범위 보정(기본 5, 0.3~10 가드)
+const clampRangeKm = (v: number | undefined | null) => {
+  const km = Number.isFinite(Number(v)) ? Number(v) : 5;
+  return Math.min(Math.max(km, 0.3), 10);
 };
 
 @ApiTags("Search")
@@ -50,13 +54,13 @@ export class SearchController {
             lon: { type: "number", example: 129.081232 },
           },
         },
-        range: { type: "number", example: 50 },
+        range: { type: "number", example: 5 },
       },
       required: [],
     },
   })
   @ApiResponse({
-    status: 200,
+    status: 201, // 기존 네트워크 로그가 201이었으니 유지
     description: "추천 결과",
     schema: {
       example: {
@@ -65,7 +69,7 @@ export class SearchController {
             keyword: "신선한 삼겹살집 추천해줘",
             extractedKeywords: ["삼겹살", "신선"],
             userPosition: { lat: 37.5665, lon: 126.978 },
-            range: 50,
+            range: 5,
           },
           resultCount: 2,
         },
@@ -85,9 +89,8 @@ export class SearchController {
             finalScore: 7.2,
             naverScore: 4.3,
             coordinates: { lat: 37.5665, lon: 126.978 },
-            distanceKm: 50,
+            distanceKm: 2.1,
           },
-          // ...more
         ],
       },
     },
@@ -97,10 +100,7 @@ export class SearchController {
     const keywordFromArray = Array.isArray(body.keywords)
       ? body.keywords.filter(Boolean).join(", ")
       : "";
-
     const keyword = (body.keyword ?? keywordFromArray ?? "").trim();
-    const userPosition = body.userPosition;
-    const range = body.range;
 
     if (!keyword && (!body.keywords || body.keywords.length === 0)) {
       throw new BadRequestException(
@@ -108,11 +108,12 @@ export class SearchController {
       );
     }
 
+    // 👇 변경 포인트: range km 클램프
     const dto: SearchKeywordDto & { keywords?: string[] } = {
       keyword,
       keywords: body.keywords,
-      userPosition,
-      range,
+      userPosition: body.userPosition,
+      range: clampRangeKm(body.range), // km
     };
 
     return this.searchService.searchByKeyword(dto);
@@ -132,24 +133,9 @@ export class SearchController {
     type: String,
     description: "추천 키워드(콤마로 구분)",
   })
-  @ApiQuery({
-    name: "lat",
-    required: false,
-    type: String,
-    description: "사용자 위도",
-  })
-  @ApiQuery({
-    name: "lon",
-    required: false,
-    type: String,
-    description: "사용자 경도",
-  })
-  @ApiQuery({
-    name: "range",
-    required: false,
-    type: String,
-    description: "검색 범위(km)",
-  })
+  @ApiQuery({ name: "lat", required: false, type: String, description: "사용자 위도" })
+  @ApiQuery({ name: "lon", required: false, type: String, description: "사용자 경도" })
+  @ApiQuery({ name: "range", required: false, type: String, description: "검색 범위(km)" })
   @ApiResponse({
     status: 200,
     description: "추천 결과",
@@ -182,7 +168,6 @@ export class SearchController {
             coordinates: { lat: 35.1, lon: 129.0 },
             distanceKm: 2.5,
           },
-          // ...more
         ],
       },
     },
@@ -195,25 +180,20 @@ export class SearchController {
     @Query("range") range?: string,
   ) {
     const keywords: string[] = keywordsRaw
-      ? keywordsRaw
-          .split(",")
-          .map((k) => k.trim())
-          .filter(Boolean)
+      ? keywordsRaw.split(",").map((k) => k.trim()).filter(Boolean)
       : [];
 
     const userPosition =
       lat && lon
-        ? {
-            lat: parseFloat(lat),
-            lon: parseFloat(lon),
-          }
+        ? { lat: parseFloat(lat), lon: parseFloat(lon) }
         : undefined;
 
+    // 👇 변경 포인트: range km 클램프
     const dto: SearchKeywordDto & { keywords?: string[] } = {
       keyword: "", // GPT는 사용하지 않음
       keywords,
       userPosition,
-      range: range ? parseFloat(range) : undefined,
+      range: clampRangeKm(range ? parseFloat(range) : undefined), // km
     };
 
     return this.searchService.searchByKeyword(dto);
