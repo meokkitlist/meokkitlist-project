@@ -27,7 +27,7 @@ export class AuthController {
     res.cookie('Authentication', token, {
       httpOnly: true,
       secure: isProd, // HTTPS 환경(Render)에서는 true
-      sameSite: isProd ? 'none' : 'lax', // Vercel(프론트) ↔ Render(백엔드) 교차 허용
+      sameSite:'none', // Vercel(프론트) ↔ Render(백엔드) 교차 허용
       // ❌ domain 제거 → 자동으로 현재 서버 도메인(onrender.com)에 설정됨
       maxAge: 1000 * 60 * 60 * 2, // 2시간
       path: '/',

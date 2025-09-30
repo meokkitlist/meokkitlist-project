@@ -4,40 +4,54 @@ import { AppModule } from './app.module';
 import { Logger, ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
-import { Reflector } from '@nestjs/core';   // 👈 추가
+import { Reflector } from '@nestjs/core';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  // ✅ 쿠키 파서
   app.use(cookieParser());
+
+  // ✅ ValidationPipe
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  // ✅ 전역 직렬화기 추가
+  // ✅ 전역 직렬화
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  // ✅ 프록시(Load balancer) 뒤의 secure 쿠키 신뢰
+  // ✅ 프록시 뒤 secure 쿠키 신뢰 (Render 같은 LB 환경에서 필요)
   (app.getHttpAdapter().getInstance() as import('express').Express).set('trust proxy', 1);
 
-  // ✅ CORS
+  // ✅ CORS 설정
   const allowedOrigins = (process.env.CORS_ORIGIN ?? '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
+
   app.enableCors({
     origin: (origin, cb) => {
+      // Postman, Swagger 같은 no-origin 요청은 허용
       if (!origin) return cb(null, true);
+
+      // 환경변수에 지정한 origin만 허용
       if (allowedOrigins.includes(origin)) return cb(null, true);
+
       return cb(new Error(`Not allowed by CORS: ${origin}`), false);
     },
-    credentials: true,
-    methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-    allowedHeaders: ['Origin','X-Requested-With','Content-Type','Accept','Authorization'],
+    credentials: true, // ✅ 쿠키 포함 허용
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+    ],
     exposedHeaders: ['Set-Cookie'],
     optionsSuccessStatus: 204,
   });
 
-  // Swagger 설정 동일
+  // ✅ Swagger 설정
   const swaggerConfig = new DocumentBuilder()
     .setTitle('MeokkitList API')
     .setDescription('API documentation for MeokkitList project')
