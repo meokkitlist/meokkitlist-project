@@ -1,4 +1,3 @@
-// src/services/search.service.ts
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -8,6 +7,7 @@ import { SearchResultDto } from '../dto/search-result.dto';
 import { GptService } from '../gpt/gpt.service';
 import { KeywordMapService } from './keyword-map.service';
 import { SCORE_WEIGHTS } from '../config/ranking.config';
+import { ReviewDto } from '../dto/review.dto';   // ✅ 추가
 
 type LatLng = { lat: number; lon: number };
 
@@ -48,7 +48,9 @@ export class SearchService implements OnModuleInit {
 
     if (keyword) {
       const tokens = keyword
-        .split(/[\s,]+/).map((s) => s.replace(/[^\p{L}\p{N}]/gu, '')).filter((s) => s.length >= 2);
+        .split(/[\s,]+/)
+        .map((s) => s.replace(/[^\p{L}\p{N}]/gu, ''))
+        .filter((s) => s.length >= 2);
       extractedKeywords.push(...tokens);
     }
 
@@ -88,7 +90,10 @@ export class SearchService implements OnModuleInit {
     const idList = [...restaurantIdSet];
     let candidates: Restaurant[] = [];
     if (idList.length > 0) {
-      candidates = await this.restaurantRepo.find({ where: { id: In(idList) } });
+      candidates = await this.restaurantRepo.find({
+        where: { id: In(idList) },
+        relations: ['reviews'],   // ✅ 리뷰 함께 로드
+      });
     }
 
     // -------------------------
@@ -154,7 +159,7 @@ export class SearchService implements OnModuleInit {
     const top = enriched.slice(0, TOPN);
 
     // -------------------------
-    // ✅ DTO 생성자 활용
+    // ✅ DTO 생성자 활용 (ReviewDto 적용)
     // -------------------------
     return {
       meta: {
@@ -165,12 +170,13 @@ export class SearchService implements OnModuleInit {
         const r = e.raw as Restaurant;
         return new SearchResultDto({
           ...r,
-          lat: r.lat,   // 좌표 추가
-          lon: r.lon,   // 좌표 추가
-          preview: r.preview 
-            ?? (Array.isArray((r as any).reviews) && (r as any).reviews.length > 0 
-                  ? (r as any).reviews[0].content 
-                  : null),   // preview 매핑 추가
+          lat: r.lat,
+          lon: r.lon,
+          preview:
+            r.preview ??
+            (Array.isArray(r.reviews) && r.reviews.length > 0
+              ? r.reviews[0].text
+              : null),
           reviewCount: r.review_count,
           sentimentScore: r.sentiment_score,
           naverScore: r.naver_score,
@@ -179,7 +185,9 @@ export class SearchService implements OnModuleInit {
           keywordsMatched: e.keywordsMatched,
           distanceKm: e.distanceKm,
           rank: i + 1,
-    });
+          // ✅ 리뷰도 DTO로 변환해서 내려주기
+          reviews: r.reviews ? r.reviews.map((rv) => new ReviewDto(rv)) : [],
+        });
       }),
     };
   }

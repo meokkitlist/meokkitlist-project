@@ -1,15 +1,10 @@
 // main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
-
-function parseOrigins() {
-  // ENV: CORS_ORIGIN="https://meokkitlist-project.vercel.app,http://localhost:3000,http://localhost:3001"
-  const raw = process.env.CORS_ORIGIN ?? '';
-  return raw.split(',').map(s => s.trim()).filter(Boolean);
-}
+import { Reflector } from '@nestjs/core';   // 👈 추가
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -18,14 +13,19 @@ async function bootstrap() {
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
+  // ✅ 전역 직렬화기 추가
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+
   // ✅ 프록시(Load balancer) 뒤의 secure 쿠키 신뢰
   (app.getHttpAdapter().getInstance() as import('express').Express).set('trust proxy', 1);
 
-  // ✅ CORS: 허용 오리진을 명시 ( * 금지 )
-  const allowedOrigins = parseOrigins();
+  // ✅ CORS
+  const allowedOrigins = (process.env.CORS_ORIGIN ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
   app.enableCors({
     origin: (origin, cb) => {
-      // Swagger 같은 non-browser/curl은 origin 없을 수 있음 → 허용
       if (!origin) return cb(null, true);
       if (allowedOrigins.includes(origin)) return cb(null, true);
       return cb(new Error(`Not allowed by CORS: ${origin}`), false);
@@ -37,6 +37,7 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
+  // Swagger 설정 동일
   const swaggerConfig = new DocumentBuilder()
     .setTitle('MeokkitList API')
     .setDescription('API documentation for MeokkitList project')
